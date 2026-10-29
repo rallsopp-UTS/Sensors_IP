@@ -1,0 +1,30 @@
+<mujoco model="ur3e_full_scene">
+    <include file="ur3e.xml"/>
+
+    <asset>
+        <texture name="tag_tex" type="2d" file="aruco_tag.png"/>
+        <material name="tag_mat" texture="tag_tex" rgba="1 1 1 1" specular="0"/>
+
+        <texture name="checker_tex" type="2d" builtin="checker" rgb1="0 0 0" rgb2="1 1 1" width="512" height="512"/>
+        <material name="checker_mat" texture="checker_tex" texrepeat="4 3.5" specular="0"/>
+        <material name="white_mat" rgba="1 1 1 1" specular="0"/>
+    </asset>
+
+
+    <worldbody>
+        <geom name="floor" type="plane" pos="0 0 0" size="10 10 0.1"/>
+        <geom name="table" type="box" pos="0.4 0.4 0.125" size="0.5 0.5 0.125" rgba="0.45 0.3 0.15 1.0"/>
+        <body name = "target" pos="0.4 0.4 0.3">
+            <freejoint name="target_joint"/>
+            <geom name="target_geom" type="box" size = "0.05 0.05 0.05" rgba="0.0 1.0 0.0 1.0"/>
+            <geom name="tag" type="box" size="0.05 0.05 0.0005" pos="0 0 0.0505" material="tag_mat"/>
+        </body>
+
+        <body name="Checkerboard" mocap="true" pos="0.8 0.4 0.3">
+            <geom type="box" size="0.05 0.05 0.002" material="white_mat" contype="0" conaffinity="0"/>
+            <geom type="box" size="0.04 0.035 0.0005" pos="0 0 0.0025" material="checker_mat" contype="0" conaffinity="0"/>
+        </body>
+    
+    </worldbody>
+    
+</mujoco>
