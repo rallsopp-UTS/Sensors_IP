@@ -11,29 +11,41 @@ from spatialmath.base import *
 class IP:
     def __init__(self):
         print("I have started!")
-        #Location of ur3e_scene.xml
+       #Location of ur3e_scene.xml
         self.scene_path = os.path.dirname(os.path.abspath(__file__))
+
         #create model from xml
         self.model = mujoco.MjModel.from_xml_path(os.path.join(self.scene_path, "ur3e_scene.xml"))
+
         #holds all data from model
         self.data = mujoco.MjData(self.model)
+        self.est_data = mujoco.MjData(self.model)
+
         #dimensions of images taken by RGB-D
         self.height = 480
         self.width = 640
+
         #create camera (refer to as renderer)
         self.renderer = mujoco.Renderer(self.model, height=480, width=640)
+
+        self.arm_joints = {"shoulder_pan_joint" : 0, "shoulder_lift_joint": 1, "elbow_joint": 2, "wrist_1_joint": 3, "wrist_2_joint": 4, "wrist_3_joint": 5}
+        self.arm_ids = list(self.arm_joints.values())
+        print("Arm Ids:", self.arm_ids)
+
         #Calibration of Camera
-        print("Calibration Settings")
         self.K, self.dist = self.CalibrateCamera(dir="calib_2")
 
         #set to home state (roughly looking at cube/tag)
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
+        mujoco.mj_resetDataKeyframe(self.model, self.est_data, 0)
 
         #Was for testing something
         # self.data.qpos[:6] = [-0.44, -0.314, -0.157, -1.7, -0.44, -1.13]
         # self.data.ctrl[:6] = self.data.qpos[:6]
+
         #Whenever you change specific things but dont call mujoco.mj_step() make sure you use mj_forward
         mujoco.mj_forward(self.model, self.data)
+        mujoco.mj_forward(self.model, self.est_data)
 
     def TakePhoto(self): #Takes two photos, one in RGB colour, one in depth. Returns both
         self.renderer.update_scene(self.data, camera="RGB-D")
@@ -132,6 +144,19 @@ class IP:
         print('corners (px):'); print(fids[0].corners)
         print('marker pose in the camera frame, cTm:'); print(fids[0].pose) #Pose
         return fids[0].pose
+
+    def cTm_2_wTm(self, cTm): #Doesnt read from ground truth as long as it reads from est_data
+        d = self.est_data
+        for i in self.arm_ids:
+            d.qpos[i] += 0.2 #debug, need real est of q for transforms
+        mujoco.mj_kinematics(self.model, d) #calculate forward kinematics for bodies and cameras
+        mujoco.mj_camlight(self.model, d)
+        R_cam_mj = d.cam_xmat[0].reshape(3, 3) #cam_xmat returns 1x9, need to reshape to 3x3 for SE3.Rt
+        R_cam = R_cam_mj @ SE3.Rx(pi) #turning mj camera along Z- and y up, to openCV along Z+ and y up by pi rotation in x
+        t_cam = d.cam_xpos[0].copy() #take a snapshot of translation at that point in time
+        wTc = SE3.Rt(R_cam, t_cam) 
+        wTm = wTc @ cTm
+        return wTm
 
 
 if __name__ == '__main__':
