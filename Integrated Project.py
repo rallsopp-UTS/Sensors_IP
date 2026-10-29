@@ -7,6 +7,7 @@ from scipy.spatial.transform import Rotation as Rot
 from machinevisiontoolbox import FileCollection, CentralCamera, Image
 from spatialmath import SE3
 from spatialmath.base import *
+from math import pi
 
 class IP:
     def __init__(self):
