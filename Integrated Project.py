@@ -111,6 +111,39 @@ class IP:
         print("Distortion Factors:",dist)
         return K, dist
 
+    def StateSpaceModel(self):
+        # Reset to the key frame and read the actuator gains
+        model = self.model
+        data = self.data
+        arm = 6
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+        mujoco.mj_forward(model, data)
+        kp = model.actuator_gainprm[:, 0]
+
+        # Find the command that holds the arm still
+        data.ctrl[:] = data.qpos[:arm] + data.qfrc_bias[:arm] / kp
+        mujoco.mj_forward(model, data)
+
+        # Linearise numerically with MuJoCo
+        nv = model.nv
+        A_full = np.zeros((2 * nv, 2 * nv))
+        B_full = np.zeros((2 * nv, model.nu))
+        mujoco.mjd_transitionFD(model, data, 1e-6, True, A_full, B_full, None, None)
+
+        # Keep only the arm and define the output matrix
+        idx = np.r_[0:arm, nv:nv + arm]
+        A = A_full[np.ix_(idx, idx)]
+        B = B_full[idx, :]
+        C = np.hstack([np.eye(arm), np.zeros((arm, arm))])
+
+        # Rank checks and return
+        n = A.shape[0]
+        ctrb = np.hstack([np.linalg.matrix_power(A, k) @ B for k in range(n)])
+        obsv = np.vstack([C @ np.linalg.matrix_power(A, k) for k in range(n)])
+        print("Controllability rank:", np.linalg.matrix_rank(ctrb), "of", n)
+        print("Observabiltiy rank:", np.linalg.matrix_rank(obsv), "of", n)
+        return A, B, C
+    
     def DisplayImage(self, images): #Takes a list/tuple of image/s [im1, im2, ...] and displays them on the same plot
         if not isinstance(images, (list, tuple)):
             images = [images]
