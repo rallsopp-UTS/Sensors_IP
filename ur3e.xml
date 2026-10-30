@@ -133,9 +133,4 @@
     <general class="size0" name="wrist_3" joint="wrist_3_joint"/>
   </actuator>
 
-  <keyframe>
-    <!-- <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0"/> -->
-    <!-- <key name="camera" qpos="0.377 -2.51 2.01 -1.88 -1.57 0" ctrl="0.377 -.5708 1.73 -2.51 -1.57 0"/> -->
-     <key name="camera" qpos="0.377 -0.571 -0.754 -0.88 -1.57 0" ctrl="0.377 -0.571 -0.754 -0.88 -1.57 0"/>
-  </keyframe>
 </mujoco>
