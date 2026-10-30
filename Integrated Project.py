@@ -8,6 +8,7 @@ from machinevisiontoolbox import FileCollection, CentralCamera, Image
 from spatialmath import SE3
 from spatialmath.base import *
 from math import pi
+import control as ct
 
 class IP:
     def __init__(self):
