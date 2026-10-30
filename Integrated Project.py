@@ -112,7 +112,7 @@ class IP:
         print("Distortion Factors:",dist)
         return K, dist
 
-    def StateSpaceModel(self):
+    def StateSpaceModel(self): #
         # Reset to the key frame and read the actuator gains
         model = self.model
         data = self.data
@@ -120,29 +120,56 @@ class IP:
         mujoco.mj_resetDataKeyframe(model, data, 0)
         mujoco.mj_forward(model, data)
         kp = model.actuator_gainprm[:, 0]
+        kv = -model.actuator_biasprm[:, 2]
+        Kp = np.diag(kp)
+        Kv = np.diag(kv)
 
         # Find the command that holds the arm still
         data.ctrl[:] = data.qpos[:arm] + data.qfrc_bias[:arm] / kp
         mujoco.mj_forward(model, data)
 
-        # Linearise numerically with MuJoCo
+        # Build A and B from the equations of motion
         nv = model.nv
-        A_full = np.zeros((2 * nv, 2 * nv))
-        B_full = np.zeros((2 * nv, model.nu))
-        mujoco.mjd_transitionFD(model, data, 1e-6, True, A_full, B_full, None, None)
-
-        # Keep only the arm and define the output matrix
-        idx = np.r_[0:arm, nv:nv + arm]
-        A = A_full[np.ix_(idx, idx)]
-        B = B_full[idx, :]
+        M_full = np.zeros((nv, nv))
+        try: 
+            mujoco.mj_fullM(model, data, M_full)
+        except TypeError:
+            mujoco.mj_fullM(model, M_full, data.qM)
+        M0 = M_full[:arm, :arm]
+        q0 = data.qpos.copy()
+        eps = 1e-6
+        G0 = np.zeros((arm, arm))
+        for j in range(arm):
+            data.qpos[:] = q0
+            data.qpos[j] += eps
+            mujoco.mj_forward(model, data)
+            g_plus = data.qfrc_bias[:arm].copy()
+            data.qpos[:] = q0
+            data.qpos[j] -= eps
+            mujoco.mj_forward(model, data)
+            g_minus = data.qfrc_bias[:arm].copy()
+            G0[:, j] = (g_plus - g_minus) / (2 * eps)
+        data.qpos[:] = q0
+        mujoco.mj_forward(model, data)
+            
+        
+        # Assemble A, B and the output matrix
+        Minv = np.linalg.inv(M0)
+        Z = np.zeros((arm, arm))
+        I = np.eye(arm)
+        A = np.block([[Z, I], [-Minv @ (Kp + G0), -Minv @ Kv]])
+        B = np.vstack([Z, Minv @ Kp])
         C = np.hstack([np.eye(arm), np.zeros((arm, arm))])
 
         # Rank checks and return
         n = A.shape[0]
-        ctrb = np.hstack([np.linalg.matrix_power(A, k) @ B for k in range(n)])
-        obsv = np.vstack([C @ np.linalg.matrix_power(A, k) for k in range(n)])
+        s = np.linalg.norm(A, 2)
+        As = A / s
+        Bs = B / s
+        ctrb = np.hstack([np.linalg.matrix_power(As, k) @ Bs for k in range(n)])
+        obsv = np.vstack([C @ np.linalg.matrix_power(As, k) for k in range(n)])
         print("Controllability rank:", np.linalg.matrix_rank(ctrb), "of", n)
-        print("Observabiltiy rank:", np.linalg.matrix_rank(obsv), "of", n)
+        print("Observability rank:", np.linalg.matrix_rank(obsv), "of", n)
         return A, B, C
     
     def DisplayImage(self, images): #Takes a list/tuple of image/s [im1, im2, ...] and displays them on the same plot
