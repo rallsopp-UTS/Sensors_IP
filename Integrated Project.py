@@ -166,8 +166,8 @@ class IP:
         s = np.linalg.norm(A, 2)
         As = A / s
         Bs = B / s
-        ctrb = np.hstack([np.linalg.matrix_power(As, k) @ Bs for k in range(n)])
-        obsv = np.vstack([C @ np.linalg.matrix_power(As, k) for k in range(n)])
+        ctrb = np.hstack([np.linalg.matrix_power(As, k) @ Bs for k in range(n)]) #ct.ctrb()
+        obsv = np.vstack([C @ np.linalg.matrix_power(As, k) for k in range(n)]) 
         print("Controllability rank:", np.linalg.matrix_rank(ctrb), "of", n)
         print("Observability rank:", np.linalg.matrix_rank(obsv), "of", n)
         return A, B, C
@@ -195,30 +195,46 @@ class IP:
                 mujoco.mj_step(model, data)
                 viewer.sync()
 
-    def DetectMarker(self, K, show=False): #detects an ArUco marker in frame and provides the Pose from camera to marker cTm. show=True to display the image/s
-        rgb, depth = self.TakePhoto()
+    def DetectMarker(self, rgb, show=False): #detects an ArUco marker in frame and provides the Pose from camera to marker cTm. show=True to display the image/s
+        """
+        Detects an ArUco marker in an RGB img and provides the Pose from camera to marker cTm. show=True to display the image/s
+        """
         im_rgb = Image(rgb)
         if show:
-            self.DisplayImage([im_rgb, depth])
-        fids = im_rgb.fiducial(dict="4x4_50", K=self.K, side=0.10) #detection of the marker
+            self.DisplayImage(im_rgb)
+        fids = im_rgb.fiducial(dict="4x4_50", K=self.K, side=0.075) #detection of the marker
         print(f'{len(fids)} marker(s) detected')
         print('id', fids[0].id)
-        print('corners (px):'); print(fids[0].corners)
-        print('marker pose in the camera frame, cTm:'); print(fids[0].pose) #Pose
+        if fids[0].pose == None:
+            return False
         return fids[0].pose
 
-    def cTm_2_wTm(self, cTm): #Doesnt read from ground truth as long as it reads from est_data
-        d = self.est_data
-        for i in self.arm_ids:
-            d.qpos[i] += 0.2 #debug, need real est of q for transforms
+    def cTm_2_wTm(self, cTm):
+        """
+        Input camera to marker pose as SE3. Returns world to marker pose as SE3
+        """
+        d = self.est_data #Doesnt read from ground truth as long as it reads from est_data
         mujoco.mj_kinematics(self.model, d) #calculate forward kinematics for bodies and cameras
         mujoco.mj_camlight(self.model, d)
+
         R_cam_mj = d.cam_xmat[0].reshape(3, 3) #cam_xmat returns 1x9, need to reshape to 3x3 for SE3.Rt
-        R_cam = R_cam_mj @ SE3.Rx(pi) #turning mj camera along Z- and y up, to openCV along Z+ and y up by pi rotation in x
+
+        R_cam = SE3.Rt(R_cam_mj, [0,0,0]) @ SE3.Rx(pi) #turning mj camera along Z- and y up, to openCV along Z+ and y up by pi rotation in x
+
         t_cam = d.cam_xpos[0].copy() #take a snapshot of translation at that point in time
-        wTc = SE3.Rt(R_cam, t_cam) 
+
+        wTc = SE3.Rt(R_cam.R, t_cam) 
         wTm = wTc @ cTm
         return wTm
+
+    def Main(self):
+        rgb, depth = self.TakePhoto()
+        self.DisplayImage([rgb, depth])
+
+        cTm = self.DetectMarker(rgb)
+        print(cTm)
+        wTm = self.cTm_2_wTm(cTm)
+        print(wTm)
 
 
 if __name__ == '__main__':
@@ -226,4 +242,4 @@ if __name__ == '__main__':
     # run.SimTest()
     # run.DisplayImage(run.TakePhoto())
     # run.CaptureCalibrationImages(out_dir="calib_2")
-    run.DetectMarker(run.K)
+    run.Main()
