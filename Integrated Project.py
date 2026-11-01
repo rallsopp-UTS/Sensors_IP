@@ -49,6 +49,10 @@ class IP:
         mujoco.mj_forward(self.model, self.data)
         mujoco.mj_forward(self.model, self.est_data)
 
+        self.A, self.B, self.C, self.ctrb, self.obsv, self.Kp, self.G0, self.u0, self.q0 = self.StateSpaceModel()
+        self.Ts = self.model.opt.timestep
+        self.A_d, self.B_d, self.C_d = self.Discretisation(self.Ts)
+
     def TakePhoto(self): #Takes two photos, one in RGB colour, one in depth. Returns both
         self.renderer.update_scene(self.data, camera="RGB-D")
         rgb = self.renderer.render()
@@ -114,63 +118,51 @@ class IP:
 
     def StateSpaceModel(self): #
         # Reset to the key frame and read the actuator gains
-        model = self.model
-        data = self.data
-        arm = 6
-        mujoco.mj_resetDataKeyframe(model, data, 0)
-        mujoco.mj_forward(model, data)
-        kp = model.actuator_gainprm[:, 0]
-        kv = -model.actuator_biasprm[:, 2]
-        Kp = np.diag(kp)
-        Kv = np.diag(kv)
+        model = self.model                                                                              # Loading the XML
+        data = self.est_data                                                                            # Copy of data so self.data does not need to be touched
+        arm = 6                                                                                         # number of joint arms
+        mujoco.mj_resetDataKeyframe(model, data, 0)                                                     # Puts the scratch data at keyframe 0
+        mujoco.mj_forward(model, data)                                                                  # compute gravity and the other derived quantities for that pose
+        Kp = np.diag(model.actuator_gainprm[:, 0])                                                      # Servo stiffness per joint
+        Kv = np.diag(-model.actuator_biasprm[:, 2])                                                     # Servo damping per joint
 
         # Find the command that holds the arm still
-        data.ctrl[:] = data.qpos[:arm] + data.qfrc_bias[:arm] / kp
-        mujoco.mj_forward(model, data)
+        data.ctrl[:] = data.qpos[:arm] + data.qfrc_bias[:arm] / np.diag(Kp)                             # command = current angle + (gravity torque / servo stiffness)
+        mujoco.mj_forward(model, data)                                                                  # refresh derived quantities with new command
+        self.q0 = data.qpos[:arm].copy()                                                                # save the key frame joint angles, the opperating point the model is buklt around
+        self.u0 = data.ctrl[:arm].copy()                                                                # save the command that holds that pose, used later as gravity feedforward
 
         # Build A and B from the equations of motion
-        nv = model.nv
-        M_full = np.zeros((nv, nv))
-        try: 
-            mujoco.mj_fullM(model, data, M_full)
-        except TypeError:
-            mujoco.mj_fullM(model, M_full, data.qM)
-        M0 = M_full[:arm, :arm]
-        q0 = data.qpos.copy()
-        eps = 1e-6
-        G0 = np.zeros((arm, arm))
-        for j in range(arm):
-            data.qpos[:] = q0
-            data.qpos[j] += eps
-            mujoco.mj_forward(model, data)
-            g_plus = data.qfrc_bias[:arm].copy()
-            data.qpos[:] = q0
-            data.qpos[j] -= eps
-            mujoco.mj_forward(model, data)
-            g_minus = data.qfrc_bias[:arm].copy()
-            G0[:, j] = (g_plus - g_minus) / (2 * eps)
-        data.qpos[:] = q0
-        mujoco.mj_forward(model, data)
-            
-        
+        nv = model.nv                                                                                   # number of joint velocities (6 am + 6 for the cube)
+        DfDq, DfDv, DfDa = np.zeros((nv, nv)), np.zeros((nv, nv)), np.zeros((nv, nv))                   # empty arrray to be fill by Mojoco
+            # DfDq = how the need force changes as joint position changes
+            # DfDv = how the needed force changes as joint velocity changes
+            # DfDa = How the needed force changes as joint accelerations changes
+        mujoco.mjd_inverseFD(model, data, 1e-6, False, DfDq, DfDv, DfDa, None, None, None, None)        # finite invers jacobians of the invers dynamics, False = leave out actuator forces
+        M0 = DfDa[:arm, :arm]                                                                           # Mass matrix of the arm at this pose
+        G0 = DfDq[:arm, :arm]                                                                           # Gravity Jacobian, how gravity changes as joints move
+
         # Assemble A, B and the output matrix
-        Minv = np.linalg.inv(M0)
-        Z = np.zeros((arm, arm))
-        I = np.eye(arm)
-        A = np.block([[Z, I], [-Minv @ (Kp + G0), -Minv @ Kv]])
-        B = np.vstack([Z, Minv @ Kp])
-        C = np.hstack([np.eye(arm), np.zeros((arm, arm))])
+        Minv = np.linalg.inv(M0)                                                                        # Turns Torque into acceleration
+        Z = np.zeros((arm, arm))                                                                        # 6x6 block of zeros
+        I = np.eye(arm)                                                                                 # 6x6 identity block
+        A = np.block([[Z, I], [-Minv @ (Kp + G0), -Minv @ Kv]])                                         # 12x12 system matrix: top row says qdot is rate of change of q, bottom row is acceleration from servo spring, gravit and damping
+        B = np.vstack([Z, Minv @ Kp])                                                                   # 12x6 input matrix: comandsonly affect acceleration, through the servo stiffness
+        C = np.hstack([I, Z])                                                                           # 6x12 output matrix: the encoders measure the six joint angles, not the speed
 
         # Rank checks and return
-        n = A.shape[0]
-        s = np.linalg.norm(A, 2)
-        As = A / s
-        Bs = B / s
-        ctrb = np.hstack([np.linalg.matrix_power(As, k) @ Bs for k in range(n)]) #ct.ctrb()
-        obsv = np.vstack([C @ np.linalg.matrix_power(As, k) for k in range(n)]) 
-        print("Controllability rank:", np.linalg.matrix_rank(ctrb), "of", n)
-        print("Observability rank:", np.linalg.matrix_rank(obsv), "of", n)
-        return A, B, C
+        n = A.shape[0]                                                                                  # number of states (12)
+        s = np.linalg.norm(A, 2)                                                                        # overall size of A, used to rescale time
+        ctrb = ct.ctrb(A/s, B/s)                                                                        # The scaled controlability matrix
+        obsv = ct.obsv(A/s, C)                                                                          # The scaled Observability matrix
+        print("Controllability rank:", np.linalg.matrix_rank(ctrb), "of", n)                            # 12 of 12 means the commands can reach every state
+        print("Observability rank:", np.linalg.matrix_rank(obsv), "of", n)                              # 12 of 12 means every state can be worked out by the encoders
+        return A, B, C, ctrb, obsv, Kp, G0, self.u0, self.q0                                            # hand the model and perating point to the rest of the system
+
+    def Discretisation(self, Ts):
+        sysc = ct.ss(self.A, self.B, self.C, np.zeros((self.C.shape[0], self.B.shape[1])))
+        sysd = ct.c2d(sysc=sysc, Ts=Ts, method="zoh")
+        return sysd.A, sysd.B, sysd.C
     
     def DisplayImage(self, images): #Takes a list/tuple of image/s [im1, im2, ...] and displays them on the same plot
         if not isinstance(images, (list, tuple)):
@@ -236,6 +228,46 @@ class IP:
         wTm = self.cTm_2_wTm(cTm)
         print(wTm)
 
+    def RunPick(self, T=10.0):
+        model = self.model
+        data = self.data
+        arm = 6
+        dt = model.opt.timestep
+        n_steps = int(T / dt)
+        cam_every = 50 # TODO Ryan Camera rate in steps, I just picked a random number Choose whatever even rendering camera every step
+
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+        mujoco.mj_forward(model, data)
+        x_hat = np.hstack([self.q0, np.zeros(arm)])              # estimate of [q, qdot]
+        wTm = None                                               # latest marker pose in world frame from camera
+        log = {"t": [], "x_true": [], 'x_hat': [], "u": []}
+
+
+        for k in range(n_steps):
+            #1. SENSING (Part B)
+            q_meas = data.qpos[:arm].copy() #simulated encoder, the only place plant state is read for the loop. TODO (Part B): add encoder noise
+            if k % cam_every == 0:
+                rgb, depth = self.TakePhoto()
+                # TODO Hande No camera in view, add deapth noise
+                # TODO cTm_2_wTm reads the camera pose from est_data
+            
+            # 2. ESTIMATION (Part C)
+            # TODO (Part C) update x_hat from q_meas and the last command u, using A and C, Q and R
+
+            # 3. CONTROL (Part D)
+            # TODO (part D): PBVS outer loop into joint target, LQR inner loop uses x_hat to compute u
+            u = self.u0
+
+            #4. PLANT
+            data.ctrl[:arm] = u
+            mujoco.mj_step(model, data)
+
+            #5. LOGGING (Part E)
+            log["t"].append(data.time)
+            log["x_true"].append(np.hstack([data.qpos[:arm], data.qvel[:arm]]))
+            log["x_hat"].append(x_hat.copy())
+            log["u"].append(u.copy())          
+            # TODO (Part E): also log targets true Postion
 
 if __name__ == '__main__':
     run = IP()
