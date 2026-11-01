@@ -53,6 +53,16 @@ class IP:
         self.Ts = self.model.opt.timestep
         self.A_d, self.B_d, self.C_d = self.Discretisation(self.Ts)
 
+        self.sig_q = 0.002 # encoder noise, rad
+        self.rng = np.random.default_rng(0)
+        self.Qd = np.diag([1e-4**2]*6 + [5e-2**2]*6) * self.Ts
+        self.Rn = np.eye(6) * self.sig_q**2
+        self.xh = np.zeros(12)
+        self.P = np.eye(12) * 1e-2
+        self.q_hat = self.q0.copy()
+        
+        self.c_starTm = SE3.Trans(-0.05, 0, 0.05) @ SE3.Rx(pi)
+
     def TakePhoto(self): #Takes two photos, one in RGB colour, one in depth. Returns both
         self.renderer.update_scene(self.data, camera="RGB-D")
         rgb = self.renderer.render()
@@ -163,7 +173,26 @@ class IP:
         sysc = ct.ss(self.A, self.B, self.C, np.zeros((self.C.shape[0], self.B.shape[1])))
         sysd = ct.c2d(sysc=sysc, Ts=Ts, method="zoh")
         return sysd.A, sysd.B, sysd.C
-    
+
+    def ReadEncoders(self):
+        return self.data.qpos[:6] + self.rng.normal(0, self.sig_q, 6)
+
+    def KFStep(self, u_prev, q_meas):
+        A, B, C = self.A_d, self.B_d, self.C_d
+        u = u_prev - self.u0
+        y = q_meas - self.q0
+        xp = A @ self.xh + B @ u # predict
+        Pp = A @ self.P @ A.T + self.Qd
+        S = C @ Pp @ C.T + self.Rn
+        K = Pp @ C.T @ np.linalg.inv(S)
+        nu = y - C @ xp
+        self.xh = xp + K @ nu # correct
+        IKC = np.eye(12) - K @ C
+        self.P = IKC @ Pp @ IKC.T + K @ self.Rn @ K.T
+        self.nis = nu @ np.linalg.solve(S, nu)
+        self.q_hat = self.xh[:6] + self.q0
+        return self.q_hat, self.xh[6:]
+        
     def DisplayImage(self, images): #Takes a list/tuple of image/s [im1, im2, ...] and displays them on the same plot
         if not isinstance(images, (list, tuple)):
             images = [images]
@@ -206,6 +235,7 @@ class IP:
         Input camera to marker pose as SE3. Returns world to marker pose as SE3
         """
         d = self.est_data #Doesnt read from ground truth as long as it reads from est_data
+        d.qpos[:6] = self.q_hat
         mujoco.mj_kinematics(self.model, d) #calculate forward kinematics for bodies and cameras
         mujoco.mj_camlight(self.model, d)
 
@@ -238,14 +268,17 @@ class IP:
 
         mujoco.mj_resetDataKeyframe(model, data, 0)
         mujoco.mj_forward(model, data)
+        self.xh[:] = 0
+        self.P = np.eye(12) * 1e-2
+        u_prev = self.u0.copy()
         x_hat = np.hstack([self.q0, np.zeros(arm)])              # estimate of [q, qdot]
         wTm = None                                               # latest marker pose in world frame from camera
-        log = {"t": [], "x_true": [], 'x_hat': [], "u": []}
+        log = {"t": [], "x_true": [], 'x_hat': [], "u": [], "sigma": [], "P": [], "nis": []}
 
 
         for k in range(n_steps):
             #1. SENSING (Part B)
-            q_meas = data.qpos[:arm].copy() #simulated encoder, the only place plant state is read for the loop. TODO (Part B): add encoder noise
+            q_meas = self.ReadEncoders() #simulated encoder, the only place plant state is read for the loop. TODO (Part B): add encoder noise
             if k % cam_every == 0:
                 rgb, depth = self.TakePhoto()
                 # TODO Hande No camera in view, add deapth noise
@@ -253,20 +286,26 @@ class IP:
             
             # 2. ESTIMATION (Part C)
             # TODO (Part C) update x_hat from q_meas and the last command u, using A and C, Q and R
-
+            _hat, qd_hat = self.KFStep(u_prev, q_meas)
+            x_hat = np.hstack([q_hat, qd_hat]) 
             # 3. CONTROL (Part D)
             # TODO (part D): PBVS outer loop into joint target, LQR inner loop uses x_hat to compute u
             u = self.u0
 
+            x_true_k = np.hstack([data.qpos[:arm], data.qvel[:arm]])
             #4. PLANT
             data.ctrl[:arm] = u
             mujoco.mj_step(model, data)
+            u_prev = u
 
             #5. LOGGING (Part E)
             log["t"].append(data.time)
-            log["x_true"].append(np.hstack([data.qpos[:arm], data.qvel[:arm]]))
+            log["x_true"].append(x_true_k)
             log["x_hat"].append(x_hat.copy())
-            log["u"].append(u.copy())          
+            log["u"].append(u.copy()) 
+            log["sigma"].append(np.sqrt(np.diag(self.P)))
+            log["P"].append(self.P.copy())
+            log["nis"].append(self.nis)
             # TODO (Part E): also log targets true Postion
 
 if __name__ == '__main__':
@@ -274,4 +313,21 @@ if __name__ == '__main__':
     # run.SimTest()
     # run.DisplayImage(run.TakePhoto())
     # run.CaptureCalibrationImages(out_dir="calib_2")
+    log = run.RunPick(T=5.0)
+    t  = np.array(log["t"]);  Xt = np.array(log["x_true"])
+    Xh = np.array(log["x_hat"]); sd = np.array(log["sigma"]); P = np.array(log["P"])
+    
+    j = 6   # index 6 = joint 1 SPEED (never measured by the encoders)
+    plt.plot(t, Xt[:, j], 'k', label='true')
+    plt.plot(t, Xh[:, j], 'r--', label='estimate')
+    plt.fill_between(t, Xh[:, j]-3*sd[:, j], Xh[:, j]+3*sd[:, j], alpha=0.2, label='±3σ')
+    plt.legend(); plt.show()
+    
+    s = 500 # skip the start-up period
+    err = Xt - Xh
+    nees = [e @ np.linalg.solve(Pk, e) for e, Pk in zip(err[s:], P[s:])]
+    print("RMSE position:", np.sqrt((err[s:, :6]**2).mean()))
+    print("RMSE speed   :", np.sqrt((err[s:, 6:]**2).mean()))
+    print("NEES (aim ~12):", np.mean(nees))
+    print("NIS  (aim ~6) :", np.nanmean(log["nis"][s:]))
     run.Main()
