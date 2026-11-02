@@ -312,27 +312,40 @@ class IP:
             log["nis"].append(self.nis)
             # TODO (Part E): also log targets true Postion
 
+    
+    def EvaluateEstimator(self, log, s=500, joint=6, plot=True):
+        # Scores the Kalman filter against ground truth. Truth is used ONLY here, never in the filter.
+        t  = np.array(log["t"]);  Xt = np.array(log["x_true"])
+        Xh = np.array(log["x_hat"]); sd = np.array(log["sigma"]); P = np.array(log["P"])
+
+        if plot:
+            j = joint # 6 = joint 1 SPEED (never measured by the encoders)
+            plt.plot(t, Xt[:, j], 'k', label='true')
+            plt.plot(t, Xh[:, j], 'r--', label='estimate')
+            plt.fill_between(t, Xh[:, j]-3*sd[:, j], Xh[:, j]+3*sd[:, j], alpha=0.2, label='±3σ')
+            plt.legend(); plt.show()
+
+        err = Xt - Xh  # s = samples skipped for the start-up period
+        nees = [e @ np.linalg.solve(Pk, e) for e, Pk in zip(err[s:], P[s:])]
+        results = {
+            "rmse_pos": np.sqrt((err[s:, :6]**2).mean()),
+            "rmse_vel": np.sqrt((err[s:, 6:]**2).mean()),
+            "nees": np.mean(nees),
+            "nis": np.nanmean(log["nis"][s:]),
+        }
+        print("RMSE position:", results["rmse_pos"])
+        print("RMSE speed   :", results["rmse_vel"])
+        print("NEES (aim ~12):", results["nees"])
+        print("NIS  (aim ~6) :", results["nis"])
+        return results
+
+
 if __name__ == '__main__':
     run = IP()
     # run.SimTest()
     # run.DisplayImage(run.TakePhoto())
     # run.CaptureCalibrationImages(out_dir="calib_2")
     log = run.RunPick(T=5.0)
-    t  = np.array(log["t"]);  Xt = np.array(log["x_true"])
-    Xh = np.array(log["x_hat"]); sd = np.array(log["sigma"]); P = np.array(log["P"])
-    
-    j = 6   # index 6 = joint 1 SPEED (never measured by the encoders)
-    plt.plot(t, Xt[:, j], 'k', label='true')
-    plt.plot(t, Xh[:, j], 'r--', label='estimate')
-    plt.fill_between(t, Xh[:, j]-3*sd[:, j], Xh[:, j]+3*sd[:, j], alpha=0.2, label='±3σ')
-    plt.legend(); plt.show()
-    
-    s = 500 # skip the start-up period
-    err = Xt - Xh
-    nees = [e @ np.linalg.solve(Pk, e) for e, Pk in zip(err[s:], P[s:])]
-    print("RMSE position:", np.sqrt((err[s:, :6]**2).mean()))
-    print("RMSE speed   :", np.sqrt((err[s:, 6:]**2).mean()))
-    print("NEES (aim ~12):", np.mean(nees))
-    print("NIS  (aim ~6) :", np.nanmean(log["nis"][s:]))
+    run.EvaluateEstimator(log)
 
     run.renderer.close()
