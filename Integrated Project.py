@@ -39,11 +39,7 @@ class IP:
 
         #set to home state (roughly looking at cube/tag)
         mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
-        mujoco.mj_resetDataKeyframe(self.model, self.est_data, 0)
-
-        #Was for testing something
-        # self.data.qpos[:6] = [-0.44, -0.314, -0.157, -1.7, -0.44, -1.13]
-        # self.data.ctrl[:6] = self.data.qpos[:6]
+        mujoco.mj_resetDataKeyframe(self.model, self.est_data, 0
 
         #Whenever you change specific things but dont call mujoco.mj_step() make sure you use mj_forward
         mujoco.mj_forward(self.model, self.data)
@@ -249,14 +245,22 @@ class IP:
         wTm = wTc @ cTm
         return wTm
 
-    def Main(self):
+    def PBVS(self, Lambda): #Unfinished
         rgb, depth = self.TakePhoto()
-        self.DisplayImage([rgb, depth])
-
-        cTm = self.DetectMarker(rgb)
-        print(cTm)
-        wTm = self.cTm_2_wTm(cTm)
-        print(wTm)
+        cTm = self.DetectMarker(Image(rgb))
+        print("cTm:", cTm)
+        cTc_star = cTm @ self.c_starTm.inv()
+        print("cTc_star:", cTc_star)
+        theta, u = cTc_star.angvec()
+        print("angle:", theta)
+        print("axis:", u)
+        theta_u = theta * np.asarray(u)
+        print("theta_u:", theta_u)
+        err = np.hstack([cTc_star.t, theta_u]).T
+        print("error:", err)
+        
+        v_c = -Lambda * np.hstack([cTc_star.R.T @ cTc_star.t, theta_u]).T
+        print("velocity camera:", v_c)
 
     def RunPick(self, T=10.0):
         model = self.model
@@ -330,4 +334,5 @@ if __name__ == '__main__':
     print("RMSE speed   :", np.sqrt((err[s:, 6:]**2).mean()))
     print("NEES (aim ~12):", np.mean(nees))
     print("NIS  (aim ~6) :", np.nanmean(log["nis"][s:]))
-    run.Main()
+
+    run.renderer.close()
