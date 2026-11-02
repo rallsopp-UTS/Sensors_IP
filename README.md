@@ -1,7 +1,7 @@
 # Sensors_IP
 Sensors and Control for Mechatronic Systems - Integrated Project
 
-## Group Members
+## Group Members and Contributions
 
 Ryan Allsopp 
 
