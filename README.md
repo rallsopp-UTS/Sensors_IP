@@ -3,6 +3,12 @@ Sensors and Control for Mechatronic Systems - Integrated Project
 
 ## Group Members
 
+Ryan Allsopp 
+
+Austin Trevenar
+
+Sophia Reed
+
 ## Chosen Track
 
 ## Video
