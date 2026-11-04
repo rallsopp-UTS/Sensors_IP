@@ -26,10 +26,13 @@ class IP:
 
         #create camera (refer to as renderer)
         self.renderer = mujoco.Renderer(self.model, height=480, width=640)
+        self.renderer_watcher = mujoco.Renderer(self.model, height=480, width=640)
 
         self.arm_joints = {"shoulder_pan_joint" : 0, "shoulder_lift_joint": 1, "elbow_joint": 2, "wrist_1_joint": 3, "wrist_2_joint": 4, "wrist_3_joint": 5}
         self.arm_ids = list(self.arm_joints.values())
+        self.grip_id = self.model.actuator("gripper/fingers_actuator").id
         print("Arm Ids:", self.arm_ids)
+        print("Grip Id:", self.grip_id)
 
         #Calibration of Camera
         self.K, self.dist = self.CalibrateCamera(dir="calib_2")
@@ -57,19 +60,18 @@ class IP:
         
         #PBVS Stuff
         self.Rx_pi = np.diag([1.0, -1.0, -1.0])
-        self.c_starTm = SE3.Trans(0, 0, 0.15) @ SE3.Rx(pi) @ SE3.Rz(pi/2)
+        self.c_starTm = SE3.Trans(0, 0, 0.15) @ SE3.Rx(pi) @ SE3.Rz(pi/2) @ SE3.Trans(0.01, 0, 0)
 
     def TakePhoto(self): 
         """
-        Takes two photos, one in RGB colour, one in depth. Returns both
+        Takes two photos, one in RGB colour from the arm, one from the full scene view camera. Returns both
         """
         
         self.renderer.update_scene(self.data, camera="RGB-D")
         rgb = self.renderer.render()
-        self.renderer.enable_depth_rendering()
-        depth = self.renderer.render()
-        self.renderer.disable_depth_rendering()
-        return rgb, depth
+        self.renderer_watcher.update_scene(self.data, camera="fixed_cam")
+        full_view = self.renderer_watcher.render()
+        return rgb, full_view
 
     def CaptureCalibrationImages(self, n=20, out_dir="calib", seed=0, max_tries=200): #Was used to get checkerboard images for calibration
         out_dir = os.path.abspath(out_dir)
@@ -214,7 +216,7 @@ class IP:
         
         u_total = self.Get_U_Feedforward(q_ref) - self.K_lqr @ e # minus u feedback
         
-        return u_total #Incomplete currently
+        return u_total 
     
     def Get_U_Feedforward(self, q_ref):
 
@@ -227,7 +229,10 @@ class IP:
         
         return q_ref + gravity_torque/np.diag(self.Kp) # return the u feedforward
     
-    def DisplayImage(self, images): #Takes a list/tuple of image/s [im1, im2, ...] and displays them on the same plot
+    def DisplayImage(self, images):
+        """
+        Takes a list/tuple of image/s and displays them on the same plot
+        """
         if not isinstance(images, (list, tuple)):
             images = [images]
         fig, axes = plt.subplots(1, len(images), squeeze=False)
@@ -282,11 +287,11 @@ class IP:
         theta_u = theta * np.asarray(u)
         err = np.hstack([cTc_star.t, theta_u]).T
         
-        v_c = Lambda * err # np.hstack([cTc_star.R.T @ cTc_star.t, theta_u]).T
+        v_c = Lambda * err 
         
-        wRc = d.cam_xmat[0].reshape(3, 3) 
+        wRc = d.cam_xmat[self.rgb_cam_id].reshape(3, 3) 
         wRc = wRc @ self.Rx_pi
-        wtc = d.cam_xpos[0].copy()
+        wtc = d.cam_xpos[self.rgb_cam_id].copy()
         
         wRe = d.site("attachment_site").xmat.reshape(3, 3) 
         wRe = wRe @ self.Rx_pi
@@ -322,7 +327,7 @@ class IP:
         arm = 6
         dt = model.opt.timestep
         n_steps = int(T / dt)
-        cam_every = 50 # TODO Ryan Camera rate in steps, I just picked a random number Choose whatever even rendering camera every step
+        cam_every = 50 # TODO Ryan Camera rate in steps
 
         mujoco.mj_resetDataKeyframe(model, data, 0)
         mujoco.mj_forward(model, data)
@@ -339,13 +344,13 @@ class IP:
 
         for k in range(n_steps):
             #1. SENSING (Part B)
-            q_meas = self.ReadEncoders() #simulated encoder, the only place plant state is read for the loop. TODO (Part B): add encoder noise
+            q_meas = self.ReadEncoders() #simulated encoder, the only place plant state is read for the loop.
             q_hat, qd_hat = self.KFStep(u_prev, q_meas)
             x_hat = np.hstack([q_hat, qd_hat]) 
             
             if k % cam_every == 0:
                 rgb, depth = self.TakePhoto()
-                cv2.imshow("wrist cam", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+                cv2.imshow("wrist cam", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)); cv2.imshow("scene view", cv2.cvtColor(full_view, cv2.COLOR_RGB2BGR))
                 cv2.waitKey(1)
                 qd_ref, visual_err = self.PBVS(rgb, q_hat, Lambda=Lambda)
                 
@@ -383,6 +388,14 @@ class IP:
             log["nis"].append(self.nis)
             log["PBVS visual error"].append(visual_err) 
             # TODO (Part E): also log targets true Postion
+        data.ctrl[self.grip_id] = 255
+        mujoco.mj_step(model, data)
+        for _ in range(75):
+            rgb, full_view = self.TakePhoto()
+            cv2.imshow("wrist cam", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)); cv2.imshow("scene view", cv2.cvtColor(full_view, cv2.COLOR_RGB2BGR))
+            cv2.waitKey(1)
+            mujoco.mj_step(model, data)
+        
         cv2.destroyAllWindows()
         return log
     
@@ -410,6 +423,9 @@ class IP:
         print("RMSE speed   :", results["rmse_vel"])
         print("NEES (aim ~12):", results["nees"])
         print("NIS  (aim ~6) :", results["nis"])
+
+        input("Run Over. Input to close")
+        
         return results
 
 
@@ -420,3 +436,4 @@ if __name__ == '__main__':
     run.EvaluateEstimator(log)
     
     run.renderer.close()
+    run.renderer_watcher.close()
