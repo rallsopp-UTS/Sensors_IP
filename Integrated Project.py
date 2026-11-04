@@ -52,7 +52,7 @@ class IP:
         #self.Qd = np.diag([1e-4**2]*6 + [5e-2**2 * 27.5]*6) * self.Ts * 3
         w_pos = np.array([4.55e-7, 2.59e-6, 1.44e-6, 2.41e-7, 3.07e-7, 6.63e-8])
         w_vel = np.array([3.70e-4, 2.28e-3, 1.13e-3, 1.26e-4, 2.44e-4, 1.15e-4])
-        self.Qd = np.diag(np.concatenate([w_pos, w_vel]) ** 2) * 120
+        self.Qd = np.diag(np.concatenate([w_pos, w_vel]) ** 2) * 220
         self.Rn = np.eye(6) * self.sig_q**2
         self.xh = np.zeros(12)
         self.P = np.eye(12) * 1e-2
