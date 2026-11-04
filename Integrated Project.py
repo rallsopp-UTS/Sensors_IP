@@ -344,63 +344,64 @@ class IP:
         visual_err = np.zeros(6)
         log = {"t": [], "x_true": [], 'x_hat': [], "u": [], "sigma": [], "P": [], "nis": [], "PBVS visual error": [], "q_meas": []}
 
-
-        for k in range(n_steps):
-            #1. SENSING (Part B)
-            q_meas = self.ReadEncoders() #simulated encoder, the only place plant state is read for the loop.
-            q_hat, qd_hat = self.KFStep(u_prev, q_meas)
-            x_hat = np.hstack([q_hat, qd_hat]) 
-            
-            if k % cam_every == 0:
-                rgb, depth = self.TakePhoto()
-                cv2.imshow("wrist cam", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)); cv2.imshow("scene view", cv2.cvtColor(full_view, cv2.COLOR_RGB2BGR))
-                cv2.waitKey(1)
-                qd_ref, visual_err = self.PBVS(rgb, q_hat, Lambda=Lambda)
-                
-                if qd_ref is None:
-                    visual_err = np.full(6, np.nan)
-                    lost = True
-                else:
-                    lost = False
-                    q_seen = q_hat.copy()
-                
-                
-                print("meters", np.linalg.norm(visual_err[:3]))
-                print("rads", np.linalg.norm(visual_err[3:]))
-            if lost:
-                qd_ref = np.clip(2.0 * (q_seen - q_ref), -0.3, 0.3)
-            q_ref = q_ref + qd_ref * dt 
-
-            # 3. CONTROL (Part D)
-            # TODO (part D): PBVS outer loop into joint target, LQR inner loop uses x_hat to compute u
-            u = self.ControlLQR(x_hat, q_ref)
-
-            x_true_k = np.hstack([data.qpos[:arm], data.qvel[:arm]])
-            #4. PLANT
-            data.ctrl[:arm] = u
-            mujoco.mj_step(model, data)
-            u_prev = u
-
-            #5. LOGGING (Part E)
-            log["t"].append(data.time)
-            log["x_true"].append(x_true_k)
-            log["x_hat"].append(x_hat.copy())
-            log["u"].append(u.copy()) 
-            log["sigma"].append(np.sqrt(np.diag(self.P)))
-            log["P"].append(self.P.copy())
-            log["nis"].append(self.nis)
-            log["PBVS visual error"].append(visual_err) 
-            log["q_meas"].append(q_meas)
-            # TODO (Part E): also log targets true Postion
-        data.ctrl[self.grip_id] = 255
-        mujoco.mj_step(model, data)
-        for _ in range(75):
-            rgb, full_view = self.TakePhoto()
-            cv2.imshow("wrist cam", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)); cv2.imshow("scene view", cv2.cvtColor(full_view, cv2.COLOR_RGB2BGR))
-            cv2.waitKey(1)
-            mujoco.mj_step(model, data)
+        with mujoco.viewer.launch_passive(model, data) as viewer:
+            while viewer.is_running():
+                for k in range(n_steps):
+                    #1. SENSING (Part B)
+                    q_meas = self.ReadEncoders() #simulated encoder, the only place plant state is read for the loop.
+                    q_hat, qd_hat = self.KFStep(u_prev, q_meas)
+                    x_hat = np.hstack([q_hat, qd_hat]) 
+                    
+                    if k % cam_every == 0:
+                        rgb, full_view = self.TakePhoto()
+                        qd_ref, visual_err = self.PBVS(rgb, q_hat, Lambda=Lambda)
+                        
+                        if qd_ref is None:
+                            visual_err = np.full(6, np.nan)
+                            lost = True
+                        else:
+                            lost = False
+                            q_seen = q_hat.copy()
+                        
+                        
+                        print("meters", np.linalg.norm(visual_err[:3]))
+                        print("rads", np.linalg.norm(visual_err[3:]))
+                    if lost:
+                        qd_ref = np.clip(2.0 * (q_seen - q_ref), -0.3, 0.3)
+                    q_ref = q_ref + qd_ref * dt 
         
-        cv2.destroyAllWindows()
+                    # 3. CONTROL (Part D)
+                    # TODO (part D): PBVS outer loop into joint target, LQR inner loop uses x_hat to compute u
+                    u = self.ControlLQR(x_hat, q_ref)
+        
+                    x_true_k = np.hstack([data.qpos[:arm], data.qvel[:arm]])
+                    #4. PLANT
+                    data.ctrl[:arm] = u
+                    mujoco.mj_step(model, data)
+                    if k % 10 == 0:
+                        viewer.sync()
+                    u_prev = u
+        
+                    #5. LOGGING (Part E)
+                    log["t"].append(data.time)
+                    log["x_true"].append(x_true_k)
+                    log["x_hat"].append(x_hat.copy())
+                    log["u"].append(u.copy()) 
+                    log["sigma"].append(np.sqrt(np.diag(self.P)))
+                    log["P"].append(self.P.copy())
+                    log["nis"].append(self.nis)
+                    log["PBVS visual error"].append(visual_err) 
+                    log["q_meas"].append(q_meas)
+                    # TODO (Part E): also log targets true Postion
+                data.ctrl[self.grip_id] = 255
+                mujoco.mj_step(model, data)
+                for _ in range(75):
+                    rgb, full_view = self.TakePhoto()
+                    mujoco.mj_step(model, data)
+                    viewer.sync()
+                input("Run over, press enter in terminal for results")
+                viewer.close()
+        
         return log
 
     def ReplayKF(self, log, q_scale=1.0, r_scale=1.0, s=500):
