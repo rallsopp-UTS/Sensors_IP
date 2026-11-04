@@ -22,10 +22,7 @@ class IP:
         #holds all data from model
         self.data = mujoco.MjData(self.model)
         self.est_data = mujoco.MjData(self.model)
-
-        #dimensions of images taken by RGB-D
-        self.height = 480
-        self.width = 640
+        self.ff_data = mujoco.MjData(self.model)
 
         #create camera (refer to as renderer)
         self.renderer = mujoco.Renderer(self.model, height=480, width=640)
@@ -36,14 +33,12 @@ class IP:
 
         #Calibration of Camera
         self.K, self.dist = self.CalibrateCamera(dir="calib_2")
+        self.cam_id = self.model.camera("RGB-D").id
 
         #set to home state (roughly looking at cube/tag)
-        mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
-        mujoco.mj_resetDataKeyframe(self.model, self.est_data, 0
-
-        #Whenever you change specific things but dont call mujoco.mj_step() make sure you use mj_forward
-        mujoco.mj_forward(self.model, self.data)
-        mujoco.mj_forward(self.model, self.est_data)
+        for d in [self.data, self.est_data, self.ff_data]:
+            mujoco.mj_resetDataKeyframe(self.model, d, 0)
+            mujoco.mj_forward(self.model, d)
 
         self.A, self.B, self.C, self.ctrb, self.obsv, self.Kp, self.G0, self.u0, self.q0 = self.StateSpaceModel()
         self.Ts = self.model.opt.timestep
@@ -51,15 +46,24 @@ class IP:
 
         self.sig_q = 0.002 # encoder noise, rad
         self.rng = np.random.default_rng(0)
-        self.Qd = np.diag([1e-4**2]*6 + [5e-2**2]*6) * self.Ts
+        self.Qd = np.diag([1e-4**2]*6 + [5e-2**2 * 27.5]*6) * self.Ts * 3
         self.Rn = np.eye(6) * self.sig_q**2
         self.xh = np.zeros(12)
         self.P = np.eye(12) * 1e-2
         self.q_hat = self.q0.copy()
         
-        self.c_starTm = SE3.Trans(-0.05, 0, 0.05) @ SE3.Rx(pi)
+        #LQR Stuff
+        self.K_lqr = self.LQR()
+        
+        #PBVS Stuff
+        self.Rx_pi = np.diag([1.0, -1.0, -1.0])
+        self.c_starTm = SE3.Trans(0, 0, 0.15) @ SE3.Rx(pi) @ SE3.Rz(pi/2)
 
-    def TakePhoto(self): #Takes two photos, one in RGB colour, one in depth. Returns both
+    def TakePhoto(self): 
+        """
+        Takes two photos, one in RGB colour, one in depth. Returns both
+        """
+        
         self.renderer.update_scene(self.data, camera="RGB-D")
         rgb = self.renderer.render()
         self.renderer.enable_depth_rendering()
@@ -111,15 +115,17 @@ class IP:
                 saved += 1
         print(f"saved {saved} usable images out of {tries + 1} tries")
 
-    def CalibrateCamera(self, dir): #Use captured checkerboard images to calibrate camera matrix. Return Camera intrinsic matrix (K) and distortion (1x6 array)
+    def CalibrateCamera(self, dir): 
+        """
+        Use captured checkerboard images to calibrate camera matrix. Return Camera intrinsic matrix (K) and distortion (1x6 array)
+        """
+
         calib_dir = os.path.abspath(dir)
         images = FileCollection(os.path.join(calib_dir, "img_*.png"))
         print(f"{len(images)} images found") 
 
         K, dist, frames = CentralCamera.images2C(images, squaresize=0.01)
-        print(f"{len(frames)} of {len(images)} images used")
-        print("K Matrix:", K)
-        print("Distortion Factors:",dist)
+        print("Calibrated")
         return K, dist
 
     def StateSpaceModel(self): #
@@ -188,7 +194,39 @@ class IP:
         self.nis = nu @ np.linalg.solve(S, nu)
         self.q_hat = self.xh[:6] + self.q0
         return self.q_hat, self.xh[6:]
+
+    def LQR(self):
+        q_max  = np.deg2rad([2]*6)   # position error rad
+        qd_max = np.deg2rad([20]*6)   # velocity error rad/s
+        u_max  = np.array([0.1]*6) 
         
+        Q_lqr = np.diag(np.concatenate([1 / q_max**2, 1 / qd_max**2]))
+        R_lqr = np.diag(1 / u_max**2)
+        
+        K_lqr, _, E_lqr = ct.dlqr(self.A_d, self.B_d, Q_lqr, R_lqr)
+        
+        return K_lqr
+
+    def ControlLQR(self, x_hat, q_ref):
+        e_q = x_hat[:6] - q_ref
+        e_qd = x_hat[6:]
+        e = np.hstack([e_q, e_qd])
+        
+        u_total = self.Get_U_Feedforward(q_ref) - self.K_lqr @ e # minus u feedback
+        
+        return u_total #Incomplete currently
+    
+    def Get_U_Feedforward(self, q_ref):
+
+        self.ff_data.qpos[:6] = q_ref #test estimated location
+        self.ff_data.qvel[:] = 0 #at location with no velocity
+        
+        mujoco.mj_forward(self.model, self.ff_data) #calculate scene
+        
+        gravity_torque = self.ff_data.qfrc_bias[:6] #calculate the bias force which keeps at location q_ref
+        
+        return q_ref + gravity_torque/np.diag(self.Kp) # return the u feedforward
+    
     def DisplayImage(self, images): #Takes a list/tuple of image/s [im1, im2, ...] and displays them on the same plot
         if not isinstance(images, (list, tuple)):
             images = [images]
@@ -212,55 +250,71 @@ class IP:
                 mujoco.mj_step(model, data)
                 viewer.sync()
 
-    def DetectMarker(self, rgb, show=False): #detects an ArUco marker in frame and provides the Pose from camera to marker cTm. show=True to display the image/s
+    def DetectMarker(self, rgb, show=False):
         """
         Detects an ArUco marker in an RGB img and provides the Pose from camera to marker cTm. show=True to display the image/s
         """
         im_rgb = Image(rgb)
         if show:
             self.DisplayImage(im_rgb)
-        fids = im_rgb.fiducial(dict="4x4_50", K=self.K, side=0.075) #detection of the marker
-        print(f'{len(fids)} marker(s) detected')
-        print('id', fids[0].id)
-        if fids[0].pose == None:
-            return False
+        fids = im_rgb.fiducial(dict="4x4_50", K=self.K_cam, side=0.075) #detection of the marker
+        if len(fids) == 0 or fids[0].pose == None:
+            print("Marker not Detected")
+            return None
+        print("Marker Detected")
         return fids[0].pose
 
-    def cTm_2_wTm(self, cTm):
-        """
-        Input camera to marker pose as SE3. Returns world to marker pose as SE3
-        """
-        d = self.est_data #Doesnt read from ground truth as long as it reads from est_data
-        d.qpos[:6] = self.q_hat
-        mujoco.mj_kinematics(self.model, d) #calculate forward kinematics for bodies and cameras
-        mujoco.mj_camlight(self.model, d)
-
-        R_cam_mj = d.cam_xmat[0].reshape(3, 3) #cam_xmat returns 1x9, need to reshape to 3x3 for SE3.Rt
-
-        R_cam = SE3.Rt(R_cam_mj, [0,0,0]) @ SE3.Rx(pi) #turning mj camera along Z- and y up, to openCV along Z+ and y up by pi rotation in x
-
-        t_cam = d.cam_xpos[0].copy() #take a snapshot of translation at that point in time
-
-        wTc = SE3.Rt(R_cam.R, t_cam) 
-        wTm = wTc @ cTm
-        return wTm
-
-    def PBVS(self, Lambda): #Unfinished
-        rgb, depth = self.TakePhoto()
-        cTm = self.DetectMarker(Image(rgb))
-        print("cTm:", cTm)
-        cTc_star = cTm @ self.c_starTm.inv()
-        print("cTc_star:", cTc_star)
-        theta, u = cTc_star.angvec()
-        print("angle:", theta)
-        print("axis:", u)
-        theta_u = theta * np.asarray(u)
-        print("theta_u:", theta_u)
-        err = np.hstack([cTc_star.t, theta_u]).T
-        print("error:", err)
+    def PBVS(self, rgb, q_hat, show=False, Lambda=0.1, mu=0.02):
+        d = self.est_data
         
-        v_c = -Lambda * np.hstack([cTc_star.R.T @ cTc_star.t, theta_u]).T
-        print("velocity camera:", v_c)
+        d.qpos[self.arm_ids] = q_hat
+        mujoco.mj_kinematics(self.model, d)
+        
+        mujoco.mj_comPos(self.model, d)
+        mujoco.mj_camlight(self.model, d)
+        
+        cTm = self.DetectMarker(rgb, show)
+        if cTm is None:
+            return None, None #return realy if marker is not detected
+        
+        cTc_star = cTm @ self.c_starTm.inv()
+        theta, u = cTc_star.angvec()
+        theta_u = theta * np.asarray(u)
+        err = np.hstack([cTc_star.t, theta_u]).T
+        
+        v_c = Lambda * err # np.hstack([cTc_star.R.T @ cTc_star.t, theta_u]).T
+        
+        wRc = d.cam_xmat[0].reshape(3, 3) 
+        wRc = wRc @ self.Rx_pi
+        wtc = d.cam_xpos[0].copy()
+        
+        wRe = d.site("attachment_site").xmat.reshape(3, 3) 
+        wRe = wRe @ self.Rx_pi
+        wte = d.site("attachment_site").xpos.copy()
+        
+        eRc = wRe.T @ wRc
+        etc = wRe.T @ (wte - wtc) #multiply by wRe.T to make the same frame
+        
+        eVc = np.block([[eRc, skew(etc) @ eRc],
+                        [np.zeros((3,3)), eRc]])
+        
+        v_e = eVc @ v_c #velocity end effector
+        
+        site_id = self.model.site("attachment_site").id
+        Jp = np.zeros((3, self.model.nv))
+        Jr = np.zeros((3, self.model.nv))
+        mujoco.mj_jacSite(self.model, d, Jp, Jr, site_id)
+        
+        J_world = np.vstack([Jp, Jr])[:, self.arm_ids] #slices to the dofs of the robot 0-5 instead of the entire scene with the freejoint cube
+        eXw = np.block([[wRe.T, np.zeros((3, 3))], #eXw = world to end effector transformation
+                        [np.zeros((3, 3)), wRe.T]])
+        
+        J_ee = eXw @ J_world
+        J_pinv_dls = J_ee.T @ np.linalg.inv(J_ee @ J_ee.T + mu**2 * np.eye(6))
+        qdot = J_pinv_dls @ v_e
+        print("qdot:", qdot)
+        
+        return qdot, err
 
     def RunPick(self, T=10.0):
         model = self.model
@@ -276,25 +330,42 @@ class IP:
         self.P = np.eye(12) * 1e-2
         u_prev = self.u0.copy()
         x_hat = np.hstack([self.q0, np.zeros(arm)])              # estimate of [q, qdot]
-        wTm = None                                               # latest marker pose in world frame from camera
-        log = {"t": [], "x_true": [], 'x_hat': [], "u": [], "sigma": [], "P": [], "nis": []}
+        wTm = None
+        q_ref = self.q0.copy()
+        q_seen = self.q0.copy()
+        visual_err = np.zeros(6)
+        log = {"t": [], "x_true": [], 'x_hat': [], "u": [], "sigma": [], "P": [], "nis": [], "PBVS visual error": []}
 
 
         for k in range(n_steps):
             #1. SENSING (Part B)
             q_meas = self.ReadEncoders() #simulated encoder, the only place plant state is read for the loop. TODO (Part B): add encoder noise
+            q_hat, qd_hat = self.KFStep(u_prev, q_meas)
+            x_hat = np.hstack([q_hat, qd_hat]) 
+            
             if k % cam_every == 0:
                 rgb, depth = self.TakePhoto()
-                # TODO Hande No camera in view, add deapth noise
-                # TODO cTm_2_wTm reads the camera pose from est_data
-            
-            # 2. ESTIMATION (Part C)
-            # TODO (Part C) update x_hat from q_meas and the last command u, using A and C, Q and R
-            _hat, qd_hat = self.KFStep(u_prev, q_meas)
-            x_hat = np.hstack([q_hat, qd_hat]) 
+                cv2.imshow("wrist cam", cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR))
+                cv2.waitKey(1)
+                qd_ref, visual_err = self.PBVS(rgb, q_hat, Lambda=Lambda)
+                
+                if qd_ref is None:
+                    visual_err = np.full(6, np.nan)
+                    lost = True
+                else:
+                    lost = False
+                    q_seen = q_hat.copy()
+                
+                
+                print("meters", np.linalg.norm(visual_err[:3]))
+                print("rads", np.linalg.norm(visual_err[3:]))
+            if lost:
+                qd_ref = np.clip(2.0 * (q_seen - q_ref), -0.3, 0.3)
+            q_ref = q_ref + qd_ref * dt 
+
             # 3. CONTROL (Part D)
             # TODO (part D): PBVS outer loop into joint target, LQR inner loop uses x_hat to compute u
-            u = self.u0
+            u = self.ControlLQR(x_hat, q_ref)
 
             x_true_k = np.hstack([data.qpos[:arm], data.qvel[:arm]])
             #4. PLANT
@@ -310,8 +381,10 @@ class IP:
             log["sigma"].append(np.sqrt(np.diag(self.P)))
             log["P"].append(self.P.copy())
             log["nis"].append(self.nis)
+            log["PBVS visual error"].append(visual_err) 
             # TODO (Part E): also log targets true Postion
-
+        cv2.destroyAllWindows()
+        return log
     
     def EvaluateEstimator(self, log, s=500, joint=6, plot=True):
         # Scores the Kalman filter against ground truth. Truth is used ONLY here, never in the filter.
@@ -342,10 +415,8 @@ class IP:
 
 if __name__ == '__main__':
     run = IP()
-    # run.SimTest()
-    # run.DisplayImage(run.TakePhoto())
-    # run.CaptureCalibrationImages(out_dir="calib_2")
-    log = run.RunPick(T=5.0)
+    
+    log = run.RunPick(T=30.0, Lambda=0.3)
     run.EvaluateEstimator(log)
-
+    
     run.renderer.close()
