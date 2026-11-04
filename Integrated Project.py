@@ -125,7 +125,7 @@ class IP:
         Use captured checkerboard images to calibrate camera matrix. Return Camera intrinsic matrix (K) and distortion (1x6 array)
         """
 
-        calib_dir = os.path.abspath(dir)
+        calib_dir = os.path.join(self.scene_path, dir)
         images = FileCollection(os.path.join(calib_dir, "img_*.png"))
         print(f"{len(images)} images found") 
 
