@@ -34,6 +34,8 @@
   </default>
   
   <asset>
+    <model name="2f85" file="robotiq_2f85/2f85.xml"/>
+
     <material class="ur3e" name="black" rgba="0.033 0.033 0.033 1"/>
     <material class="ur3e" name="jointgray" rgba="0.278 0.278 0.278 1"/>
     <material class="ur3e" name="linkgray" rgba="0.82 0.82 0.82 1"/>
@@ -114,6 +116,9 @@
                   <geom mesh="wrist3" material="linkgray" class="visual"/>
                   <geom class="eef_collision" size="0.032 0.023" pos="0 0.07 0" quat="1 1 0 0"/>
                   <site name="attachment_site" pos="0 0.09215 0" quat="-1 1 0 0"/>
+                  <frame pos="0 0.09215 0" quat="-1 1 0 0">
+                    <attach model="2f85" body="base_mount" prefix="gripper/"/>
+                  </frame>
                   <camera name="RGB-D" mode="fixed" pos="0 0.09215 0.05" xyaxes="1 0 0 0 0 1" fovy="60"/>
                 </body>
               </body>
