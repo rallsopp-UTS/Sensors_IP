@@ -49,7 +49,10 @@ class IP:
 
         self.sig_q = 0.002 # encoder noise, rad
         self.rng = np.random.default_rng(0)
-        self.Qd = np.diag([1e-4**2]*6 + [5e-2**2 * 27.5]*6) * self.Ts * 3
+        #self.Qd = np.diag([1e-4**2]*6 + [5e-2**2 * 27.5]*6) * self.Ts * 3
+        w_pos = np.array([4.55e-7, 2.59e-6, 1.44e-6, 2.41e-7, 3.07e-7, 6.63e-8])
+        w_vel = np.array([3.70e-4, 2.28e-3, 1.13e-3, 1.26e-4, 2.44e-4, 1.15e-4])
+        self.Qd = np.diag(np.concatenate([w_pos, w_vel]) ** 2) * 120
         self.Rn = np.eye(6) * self.sig_q**2
         self.xh = np.zeros(12)
         self.P = np.eye(12) * 1e-2
@@ -339,7 +342,7 @@ class IP:
         q_ref = self.q0.copy()
         q_seen = self.q0.copy()
         visual_err = np.zeros(6)
-        log = {"t": [], "x_true": [], 'x_hat': [], "u": [], "sigma": [], "P": [], "nis": [], "PBVS visual error": []}
+        log = {"t": [], "x_true": [], 'x_hat': [], "u": [], "sigma": [], "P": [], "nis": [], "PBVS visual error": [], "q_meas": []}
 
 
         for k in range(n_steps):
@@ -387,6 +390,7 @@ class IP:
             log["P"].append(self.P.copy())
             log["nis"].append(self.nis)
             log["PBVS visual error"].append(visual_err) 
+            log["q_meas"].append(q_meas)
             # TODO (Part E): also log targets true Postion
         data.ctrl[self.grip_id] = 255
         mujoco.mj_step(model, data)
@@ -398,6 +402,39 @@ class IP:
         
         cv2.destroyAllWindows()
         return log
+
+    def ReplayKF(self, log, q_scale=1.0, r_scale=1.0, s=500):
+        """Re-runs the filter on the logged run with Q and R scaled. 1.0 = current setting."""
+        A, B, C = self.A_d, self.B_d, self.C_d
+        Qd, Rn = self.Qd * q_scale, self.Rn * r_scale
+        U = np.array(log["u"]); Ym = np.array(log["q_meas"]); Xt = np.array(log["x_true"])
+        xh = np.zeros(12); P = np.eye(12) * 1e-2
+        E, NEES, NIS, COV = [], [], [], []
+        for k in range(len(Ym)):
+            u_prev = self.u0 if k == 0 else U[k - 1]
+            xp = A @ xh + B @ (u_prev - self.u0)
+            Pp = A @ P @ A.T + Qd
+            S = C @ Pp @ C.T + Rn
+            K = Pp @ C.T @ np.linalg.inv(S)
+            nu = (Ym[k] - self.q0) - C @ xp
+            xh = xp + K @ nu
+            IKC = np.eye(12) - K @ C
+            P = IKC @ Pp @ IKC.T + K @ Rn @ K.T
+            if k >= s:
+                e = Xt[k] - np.hstack([xh[:6] + self.q0, xh[6:]])   # truth used only for scoring
+                E.append(e); NEES.append(e @ np.linalg.solve(P, e)); NIS.append(nu @ np.linalg.solve(S, nu))
+                COV.append((np.abs(e) < 3 * np.sqrt(np.diag(P))).mean())
+        E = np.array(E)
+        return dict(rmse_pos=np.sqrt((E[:, :6]**2).mean()), rmse_vel=np.sqrt((E[:, 6:]**2).mean()),
+                    nees=np.mean(NEES), nis=np.mean(NIS), cover3=np.mean(COV))
+
+    def SweepTable(self, log, values=(0.1, 0.3, 1, 3, 10)):
+        for name in ("Q", "R"):
+            print(f"\n{name}-scale  RMSEpos   RMSEvel    NEES    NIS   cover3   (1.0 = current setting)")
+            for f in values:
+                m = self.ReplayKF(log, q_scale=f if name == "Q" else 1.0, r_scale=f if name == "R" else 1.0)
+                print(f"{f:7.1f}  {m['rmse_pos']:9.5f} {m['rmse_vel']:9.4f} {m['nees']:7.1f} {m['nis']:6.1f} {m['cover3']:8.3f}")
+
     
     def EvaluateEstimator(self, log, s=500, joint=6, plot=True):
         # Scores the Kalman filter against ground truth. Truth is used ONLY here, never in the filter.
@@ -427,13 +464,26 @@ class IP:
         input("Run Over. Input to close")
         
         return results
-
+        
+    def EstimateQ(self, log, s=500):
+        """Measures how wrong the linear model is, step by step, along a logged run."""
+        A, B = self.A_d, self.B_d
+        U = np.array(log["u"]); Xt = np.array(log["x_true"])
+        Xd = Xt.copy(); Xd[:, :6] -= self.q0                 # deviation from keyframe
+        W = np.array([Xd[k + 1] - (A @ Xd[k] + B @ (U[k] - self.u0))
+                      for k in range(s, len(Xd) - 1)])
+        rms = np.sqrt((W ** 2).mean(0))
+        print("model error per step (RMS)  pos:", rms[:6], "\n vel:", rms[6:])
+        print("current Qd (sqrt of diag)   pos:", np.sqrt(np.diag(self.Qd)[:6]), "\n vel:", np.sqrt(np.diag(self.Qd)[6:]))
+        return np.diag(rms ** 2)
 
 if __name__ == '__main__':
     run = IP()
     
     log = run.RunPick(T=30.0, Lambda=0.3)
     run.EvaluateEstimator(log)
+    #run.SweepTable(log) # this is if you need tables
+    #run.SweepTable(log, values=(1, 1.25, 1.5, 2, 3)) # this was to find q since I was close, it was up to 100 to narrow down the location
     
     run.renderer.close()
     run.renderer_watcher.close()
