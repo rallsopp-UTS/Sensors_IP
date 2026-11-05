@@ -354,6 +354,7 @@ Own project.  Must include, at minimum, a state-space model with controllability
     <!--/ Abstract. -->
 
 <!-- PART C INFO -->
+<<!-- PART C INFO -->
 <section class="section">
   <div class="container is-max-desktop">
     <div class="columns is-centered">
@@ -384,8 +385,8 @@ Own project.  Must include, at minimum, a state-space model with controllability
 
 A = [ 0              I          ]      B = [ 0       ]      C = [ I  0 ]
     [ −M⁻¹(Kp + G₀)  −M⁻¹ Kv   ]          [ M⁻¹ Kp  ]</code></pre>
-          <p>Here M is the arm mass matrix, G₀ the gravity Jacobian, and Kp and Kv the servo stiffness and damping. It is discretised with a zero-order hold at the simulator timestep, T<sub>s</sub> = <mark>timestep</mark> s.</p>
-          <p><strong>Observability:</strong> the observability matrix has rank 12 of 12 (scaled test; the unscaled rank test is numerically unreliable because A has a very large dynamic range). All 12 states, including the unmeasured speeds, can therefore be recovered from the encoder angles through the model.</p>
+          <p>Here M is the arm mass matrix, G₀ the gravity Jacobian, and Kp and Kv the servo stiffness and damping. It is discretised with a zero-order hold at the simulator timestep, T<sub>s</sub> = 0.002 s.</p>
+          <p><strong>Observability:</strong> the observability matrix has rank 12 of 12 (scaled test; the unscaled rank test is numerically unreliable because A has a very large dynamic range). All 12 states, including the unmeasured speeds, can therefore be recovered from the encoder angles through the model: the model ties each speed to how its angle changes.</p>
 
           <h3 class="title is-4">3. Filter design</h3>
           <p>A standard discrete Kalman filter, using the Joseph form for the covariance update, which keeps P symmetric and positive definite.</p>
@@ -393,9 +394,9 @@ A = [ 0              I          ]      B = [ 0       ]      C = [ I  0 ]
 Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
           x̂ = x̂⁻ + K (y − C x̂⁻)
           P = (I − KC) P⁻ (I − KC)ᵀ + K R Kᵀ</code></pre>
-          <p>The filter runs inside the pick loop at every simulation step (<code>KFStep</code>). Its output feeds the LQR controller and the PBVS frame chain.</p>
+          <p>The filter runs inside the pick loop at every simulation step (<code>KFStep</code>). Its output feeds the LQR controller and the PBVS frame chain. It is a linear Kalman filter about the keyframe, not an EKF: the matrices are computed once and never recomputed.</p>
           <div class="notification is-info is-light">
-            <strong>Acknowledgement.</strong> The filter structure, the observability check, the Q/R sweep and the consistency checks follow the Week 7 tutorial (Observers and the Kalman Filter), adapted here to the UR3 model.
+            <strong>Acknowledgement.</strong> The filter structure, the observability check, the Q/R sweep and the consistency checks (NEES and NIS) follow the Week 7 tutorial (Observers and the Kalman Filter), adapted here to the UR3 model.
           </div>
 
           <h3 class="title is-4">4. Choice of R and Q</h3>
@@ -409,55 +410,58 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
           <div class="table-container">
             <table class="table is-fullwidth is-striped">
               <caption>One-step model error per joint</caption>
-              <thead><tr><th>Joint</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr></thead>
+              <thead><tr><th></th><th>Joint 1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th></tr></thead>
               <tbody>
-                <tr><td>Angle error (rad)</td><td>4.6e-7</td><td>2.6e-6</td><td>1.4e-6</td><td>2.4e-7</td><td>3.1e-7</td><td>6.6e-8</td></tr>
-                <tr><td>Speed error (rad/s)</td><td>3.7e-4</td><td>2.3e-3</td><td>1.1e-3</td><td>1.3e-4</td><td>2.4e-4</td><td>1.2e-4</td></tr>
+                <tr><td>Angle error used to build Q (rad)</td><td>4.6e-7</td><td>2.6e-6</td><td>1.4e-6</td><td>2.4e-7</td><td>3.1e-7</td><td>6.6e-8</td></tr>
+                <tr><td>Speed error used to build Q (rad/s)</td><td>3.7e-4</td><td>2.3e-3</td><td>1.1e-3</td><td>1.3e-4</td><td>2.4e-4</td><td>1.2e-4</td></tr>
+                <tr><td>Angle error, re-measured on final run (rad)</td><td>6.3e-7</td><td>4.4e-6</td><td>2.6e-6</td><td>5.7e-7</td><td>3.2e-7</td><td>7.9e-8</td></tr>
+                <tr><td>Speed error, re-measured on final run (rad/s)</td><td>5.0e-4</td><td>3.8e-3</td><td>1.7e-3</td><td>4.2e-4</td><td>2.3e-4</td><td>1.4e-4</td></tr>
               </tbody>
             </table>
           </div>
 
-          <p>The model error differs a lot between joints, about 20× between the largest and smallest speed error, so a single Q for all joints was a poor fit.</p>
-          <p><strong>Scale from consistency.</strong> The one-step errors alone gave a badly overconfident filter (NEES about 1780 against an expected 12). One overall scale factor on the variances, <mark>final multiplier</mark>, was chosen from the NEES sweep so that NEES is about 12. A likely reason a large factor is needed is that the model error is persistent rather than random from step to step, so it accumulates over many steps. This is a hypothesis; it was not tested separately.</p>
+          <p>The model error differs a lot between joints, about 20× between the largest and smallest speed error, so a single Q for all joints was a poor fit. The re-measured values are of the same size, so the shape of Q holds on the final run.</p>
+          <p><strong>Scale from consistency.</strong> The one-step errors alone gave a badly overconfident filter (NEES about 1780 against an expected 12). One overall scale factor of <strong>220</strong> on the variances was chosen from the NEES sweep so that NEES is about 12. The filter’s assumed standard deviation is therefore roughly 4 to 15 times the measured one-step error. A likely reason a large factor is needed is that the model error is persistent rather than random from step to step, so it accumulates over many steps. This is a hypothesis; it was not tested separately. <mark>Add how 220 was found (the range searched).</mark></p>
           <p>An earlier hand-tuned Q gave similar accuracy (NEES 11.9, position RMSE 0.00029 rad), but its scale factors had no stated origin, so it was replaced.</p>
 
           <h3 class="title is-4">5. Results</h3>
-          <p>Single 30 s pick run, first 500 samples discarded as start-up. Truth is used only for scoring.</p>
+          <p>Single 20 s closed-loop pick run (PBVS and LQR driving the arm using the estimated state), first 500 samples discarded as start-up. Truth is used only for scoring.</p>
 
           <div class="table-container">
             <table class="table is-fullwidth is-striped">
               <caption>Final filter performance</caption>
               <thead><tr><th>Metric</th><th>Result</th><th>Expected if consistent</th></tr></thead>
               <tbody>
-                <tr><td>Position RMSE</td><td>0.000202 rad</td><td>well below the 0.002 rad sensor noise</td></tr>
-                <tr><td>Speed RMSE</td><td>0.00290 rad/s</td><td>speed is not measured</td></tr>
-                <tr class="is-selected"><td>NEES</td><td>12.4</td><td>about 12 (12 states)</td></tr>
-                <tr class="is-selected"><td>NIS</td><td>5.996</td><td>about 6 (6 measurements)</td></tr>
+                <tr><td>Position RMSE</td><td>0.00025 rad</td><td>well below the 0.002 rad sensor noise</td></tr>
+                <tr><td>Speed RMSE</td><td>0.0040 rad/s</td><td>speed is not measured</td></tr>
+                <tr class="is-selected"><td>NEES</td><td>12.0</td><td>about 12 (12 states)</td></tr>
+                <tr class="is-selected"><td>NIS</td><td>6.0</td><td>about 6 (6 measurements)</td></tr>
+                <tr><td>3σ coverage</td><td>0.994</td><td>about 0.997</td></tr>
               </tbody>
             </table>
           </div>
 
-          <p>The position estimate is about 10× more accurate than the raw encoder reading, because the filter leans on the model, which is accurate near the keyframe. The speed estimate, which no sensor provides, is accurate to about 3 mrad/s. NEES and NIS both match their expected values, so the filter’s reported uncertainty matches its real error.</p>
+          <p>The position estimate is about 8× more accurate than the raw encoder reading, because the filter leans on the model, which is accurate near the keyframe. The speed estimate, which no sensor provides, is accurate to about 4 mrad/s. NEES and NIS both match their expected values, so the filter’s reported uncertainty matches its real error. Coverage of 0.994 is just under the ideal 0.997, so the filter is slightly overconfident on some state.</p>
 
           <figure class="image">
             <img src="./static/images/results/joint1_speed_estimate.png"
-                 alt="Joint 1 speed over 30 seconds: true value, estimate and plus or minus three sigma band">
-            <figcaption class="is-size-7 mt-2">Joint 1 speed, which the encoders never measure. The estimate follows the truth and the ±3σ band contains it. <mark>Save the plot as static/images/results/joint1_speed_estimate.png</mark></figcaption>
+                 alt="Joint 1 speed over the run: true value, estimate and plus or minus three sigma band">
+            <figcaption class="is-size-7 mt-2">Joint 1 speed, which the encoders never measure. The estimate follows the truth and the ±3σ band contains it. <mark>Move joint1_speed_estimate.png (saved by EvaluateEstimator) into static/images/results/</mark></figcaption>
           </figure>
 
           <h3 class="title is-4">6. Sensitivity: Q and R sweeps</h3>
-          <p>The recorded run was replayed through the filter with Q and R scaled (<code>SweepTable</code>). A scale of 1 is the setting used at the time of the sweep. <mark>Re-run at the final setting and paste that table here.</mark></p>
+          <p>The recorded run was replayed through the filter with Q and R scaled (<code>SweepTable</code>), using identical data each time. A scale of 1 is the final setting.</p>
 
           <div class="table-container">
             <table class="table is-fullwidth is-striped">
               <caption>Q sweep (R fixed)</caption>
               <thead><tr><th>Q scale</th><th>Pos RMSE (rad)</th><th>Speed RMSE (rad/s)</th><th>NEES</th><th>NIS</th><th>3σ coverage</th></tr></thead>
               <tbody>
-                <tr class="is-selected"><td>1</td><td>0.00020</td><td>0.0028</td><td>15.0</td><td>6.0</td><td>0.990</td></tr>
-                <tr><td>10</td><td>0.00029</td><td>0.0079</td><td>2.8</td><td>5.9</td><td>1.000</td></tr>
-                <tr><td>100</td><td>0.00049</td><td>0.0342</td><td>3.1</td><td>5.7</td><td>1.000</td></tr>
-                <tr><td>300</td><td>0.00062</td><td>0.0619</td><td>3.5</td><td>5.6</td><td>1.000</td></tr>
-                <tr><td>1000</td><td>0.00078</td><td>0.1094</td><td>3.8</td><td>5.3</td><td>1.000</td></tr>
+                <tr><td>0.1</td><td>0.00035</td><td>0.0029</td><td>159.8</td><td>6.2</td><td>0.892</td></tr>
+                <tr><td>0.3</td><td>0.00029</td><td>0.0033</td><td>46.8</td><td>6.1</td><td>0.979</td></tr>
+                <tr class="is-selected"><td>1</td><td>0.00025</td><td>0.0040</td><td>12.0</td><td>6.0</td><td>0.994</td></tr>
+                <tr><td>3</td><td>0.00028</td><td>0.0063</td><td>4.4</td><td>5.9</td><td>1.000</td></tr>
+                <tr><td>10</td><td>0.00035</td><td>0.0136</td><td>2.8</td><td>5.9</td><td>1.000</td></tr>
               </tbody>
             </table>
           </div>
@@ -467,21 +471,21 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
               <caption>R sweep (Q fixed)</caption>
               <thead><tr><th>R scale</th><th>Pos RMSE (rad)</th><th>Speed RMSE (rad/s)</th><th>NEES</th><th>NIS</th><th>3σ coverage</th></tr></thead>
               <tbody>
-                <tr class="is-selected"><td>1</td><td>0.00020</td><td>0.0028</td><td>15.0</td><td>6.0</td><td>0.990</td></tr>
-                <tr><td>10</td><td>0.00030</td><td>0.0020</td><td>17.0</td><td>0.6</td><td>0.991</td></tr>
-                <tr><td>100</td><td>0.00055</td><td>0.0007</td><td>18.7</td><td>0.1</td><td>0.991</td></tr>
-                <tr><td>300</td><td>0.00063</td><td>0.0003</td><td>19.2</td><td>0.0</td><td>0.991</td></tr>
-                <tr><td>1000</td><td>0.00067</td><td>0.0001</td><td>19.3</td><td>0.0</td><td>0.991</td></tr>
+                <tr><td>0.1</td><td>0.00035</td><td>0.0136</td><td>28.4</td><td>58.5</td><td>0.915</td></tr>
+                <tr><td>0.3</td><td>0.00028</td><td>0.0067</td><td>13.6</td><td>19.7</td><td>0.982</td></tr>
+                <tr class="is-selected"><td>1</td><td>0.00025</td><td>0.0040</td><td>12.0</td><td>6.0</td><td>0.994</td></tr>
+                <tr><td>3</td><td>0.00028</td><td>0.0033</td><td>13.8</td><td>2.0</td><td>0.993</td></tr>
+                <tr><td>10</td><td>0.00035</td><td>0.0029</td><td>16.0</td><td>0.6</td><td>0.993</td></tr>
               </tbody>
             </table>
           </div>
 
           <p>What the sweeps show:</p>
           <ul>
-            <li><strong>Q trades consistency against accuracy.</strong> Raising Q makes the filter more cautious (NEES falls from 15 to below 4) but the speed estimate gets much noisier (0.0028 to 0.034 rad/s from ×1 to ×100). Lowering Q does the reverse. The chosen Q is the point where the reported uncertainty matches the real error.</li>
-            <li><strong>NIS identifies the right R.</strong> NIS is 6.0 only at the nominal R and drops towards 0 as R is inflated. Larger R also smooths the speed estimate (0.0028 to 0.0007 rad/s) but makes position worse (0.0002 to 0.00055 rad), because the filter stops trusting the encoders.</li>
-            <li><strong>If R were 10× smaller,</strong> the filter would trust the encoders more: higher gain and an estimate that follows sensor noise more closely. Earlier sweeps on this filter, before the gripper was added, showed NIS rising to about 58 at R × 0.1, meaning the filter becomes overconfident about the sensor.</li>
-            <li><strong>NIS alone cannot detect an overconfident Q.</strong> NIS stayed near 6 for every Q tried, including settings with NEES in the thousands. NEES, which needs truth, is what exposes it.</li>
+            <li><strong>Q trades consistency against responsiveness.</strong> Lowering Q gives a slightly better speed error (0.0029 rad/s at ×0.1) but the filter becomes overconfident (NEES 160, coverage 0.89), so its reported uncertainty cannot be trusted. Raising Q makes it cautious (NEES falls to 2.8) but the speed error grows more than threefold (0.0040 to 0.0136 rad/s at ×10). The chosen Q has the lowest position error and NEES at the expected value.</li>
+            <li><strong>NIS identifies the right R.</strong> NIS follows R almost exactly: 58.5 at ×0.1, 6.0 at ×1 and 0.6 at ×10. Larger R smooths the speed estimate (0.0040 to 0.0029 rad/s) but makes position worse (0.00025 to 0.00035 rad), because the filter stops trusting the encoders.</li>
+            <li><strong>If R were 10× smaller,</strong> the filter would trust the encoders more than their real noise deserves. In the sweep, NIS rises to 58.5, the speed error rises from 0.0040 to 0.0136 rad/s (3.4×), NEES rises to 28 and coverage falls to 0.915.</li>
+            <li><strong>NIS alone cannot detect an overconfident Q.</strong> NIS stayed between 5.9 and 6.2 for every Q tried, including the setting with NEES near 160. NEES, which needs truth, is what exposes it.</li>
           </ul>
 
           <h3 class="title is-4">7. Failure analysis: the gripper changed the model</h3>
@@ -495,7 +499,7 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
                 <tr><td>Arm without gripper</td><td>measured shape, ×100</td><td>13.2</td><td>0.992</td></tr>
                 <tr><td>Arm with gripper</td><td><strong>old</strong> shape, ×100</td><td>42.7</td><td>not recorded</td></tr>
                 <tr><td>Arm with gripper</td><td><strong>re-measured</strong> shape, ×100</td><td>15.0</td><td>0.990</td></tr>
-                <tr class="is-selected"><td>Arm with gripper</td><td>re-measured shape, final scale</td><td>12.4</td><td><mark>add if recorded</mark></td></tr>
+                <tr class="is-selected"><td>Arm with gripper</td><td>re-measured shape, final scale (×220)</td><td>12.0</td><td>0.994</td></tr>
               </tbody>
             </table>
           </div>
@@ -507,7 +511,8 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
           <p>What the results do and do not support:</p>
           <ul>
             <li><strong>Linearised model.</strong> The model is valid near the keyframe. The numbers above are for the pick trajectory used here. A pick that moves the arm much further from the keyframe would degrade accuracy and would call for re-linearising along the path or an EKF.</li>
-            <li><strong>One run, one noise sequence.</strong> Q was measured and scored on the same logged run (noise seed 0), and only encoder noise was varied in the sweeps. The results show consistency on this run. They do not yet show it holds across other noise realisations or object positions. <mark>Replace with repeated-trial results if you complete them.</mark></li>
+            <li><strong>One run, one noise sequence.</strong> Q was measured, tuned and scored on the same logged run (noise seed 0), and the sweeps replay that one run. The results show consistency on this run. They do not yet show it holds across other noise realisations or object positions. <mark>Replace with repeated-trial results if you complete them.</mark></li>
+            <li><strong>Truth used for tuning.</strong> Q was measured offline using simulator truth. The running filter never sees truth.</li>
             <li><strong>Assumed noise.</strong> The 0.002 rad encoder noise is the simulator’s own injected noise, so NIS verifies the filter against a known noise level, not against a real sensor.</li>
             <li><strong>Speed error floor.</strong> The speed accuracy is limited by the model error, not by sensor noise: raising R improves it but costs position accuracy.</li>
           </ul>
