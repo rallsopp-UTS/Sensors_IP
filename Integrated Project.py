@@ -37,6 +37,7 @@ class IP:
         #Calibration of Camera
         self.K, self.dist = self.CalibrateCamera(dir="calib_2")
         self.cam_id = self.model.camera("RGB-D").id
+        self.fixed_cam_id = self.model.camera("fixed_cam").id
 
         #set to home state (roughly looking at cube/tag)
         for d in [self.data, self.est_data, self.ff_data]:
@@ -395,7 +396,7 @@ class IP:
                     # TODO (Part E): also log targets true Postion
                 data.ctrl[self.grip_id] = 255
                 mujoco.mj_step(model, data)
-                for _ in range(75):
+                for _ in range(85):
                     rgb, full_view = self.TakePhoto()
                     mujoco.mj_step(model, data)
                     viewer.sync()
@@ -447,7 +448,8 @@ class IP:
             plt.plot(t, Xt[:, j], 'k', label='true')
             plt.plot(t, Xh[:, j], 'r--', label='estimate')
             plt.fill_between(t, Xh[:, j]-3*sd[:, j], Xh[:, j]+3*sd[:, j], alpha=0.2, label='±3σ')
-            plt.legend(); plt.show()
+            plt.xlabel("time [s]"); plt.ylabel("joint 1 speed [rad/s]")
+            plt.legend(); plt.savefig("joint1_speed_estimate.png", dpi=200); plt.show()
 
         err = Xt - Xh  # s = samples skipped for the start-up period
         nees = [e @ np.linalg.solve(Pk, e) for e, Pk in zip(err[s:], P[s:])]
@@ -456,14 +458,13 @@ class IP:
             "rmse_vel": np.sqrt((err[s:, 6:]**2).mean()),
             "nees": np.mean(nees),
             "nis": np.nanmean(log["nis"][s:]),
+            "cover3": (np.abs(err[s:]) < 3 * sd[s:]).mean(),
         }
         print("RMSE position:", results["rmse_pos"])
         print("RMSE speed   :", results["rmse_vel"])
         print("NEES (aim ~12):", results["nees"])
         print("NIS  (aim ~6) :", results["nis"])
-
-        input("Run Over. Input to close")
-        
+        print("3σ coverage (aim ~0.997):", results["cover3"])        
         return results
         
     def EstimateQ(self, log, s=500):
@@ -483,8 +484,9 @@ if __name__ == '__main__':
     
     log = run.RunPick(T=30.0, Lambda=0.3)
     run.EvaluateEstimator(log)
-    #run.SweepTable(log) # this is if you need tables
+    run.SweepTable(log) # this is if you need tables
     #run.SweepTable(log, values=(1, 1.25, 1.5, 2, 3)) # this was to find q since I was close, it was up to 100 to narrow down the location
-    
+    run.EstimateQ(log)
+    print("Q diag:", np.diag(run.Qd)); print("R diag:", np.diag(run.Rn))   
     run.renderer.close()
     run.renderer_watcher.close()
