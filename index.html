@@ -335,6 +335,24 @@ Own project.  Must include, at minimum, a state-space model with controllability
           <h4 class="title is-5">Observability</h4>
           <p>The <math><mi>C</mi></math> matrix is <math><mo>[</mo><mi>I</mi><mo>,</mo><mn>0</mn><mo>]</mo></math>, and multiplying it by <math><mi>A</mi></math> gives <math><mo>[</mo><mn>0</mn><mo>,</mo><mi>I</mi><mo>]</mo></math>. Stacked together, these form an identity matrix, which has rank 12 trivially. In plain words, the encoders read the angles directly, and the speeds are how fast those angles change, so the speeds can be recovered.</p>
           <p><math><msub><mi>G</mi><mn>0</mn></msub></math> never appears in <math><mo>[</mo><mi>B</mi><mo>,</mo><mi>A</mi><mi>B</mi><mo>]</mo></math>, and <math><msub><mi>K</mi><mi>v</mi></msub></math> only sits in the bottom-right block, which doesn’t change the rank. So the full-rank result holds at any pose and with any damping, not just the key frame. It would only break if a <math><msub><mi>K</mi><mi>p</mi></msub></math> entry were zero or if <math><mi>C</mi></math> lost an encoder.</p>
+                    <h3 class="title is-4">Eigenvalues of <math><mi>A</mi></math></h3>
+ 
+          <h4 class="title is-5">What they mean</h4>
+          <ol>
+            <li>The eigenvalues of <math><mi>A</mi></math> are all negative, so the system is stable and after any small knock the arm would come back to rest.</li>
+            <li>The values are real, which means there is no wobble. The arm creeps to the target without overshooting because the motor brakes are stronger than the springs.</li>
+            <li>The slower values (<math><mo>−</mo><mn>5.00</mn></math> to <math><mo>−</mo><mn>5.09</mn></math>) are set by the motor settings. Each fades in about 0.2 s, so the arm takes roughly 0.8 s to settle after a command.</li>
+            <li>The faster values (<math><mo>−</mo><mn>178</mn></math> to <math><mo>−</mo><mn>926</mn></math>) are the brakes killing the speed quickly, with each fading in about 1 to 6 ms.</li>
+            <li>The large gap between the slow and fast values makes the system stiff, with a ratio of about 180 to 1.</li>
+          </ol>
+ 
+          <h4 class="title is-5">Why it matters to this project</h4>
+          <ol>
+            <li><strong>Stability →</strong> The arm is stable with no controller at all, so Part D’s job is tracking, not stabilising.</li>
+            <li><strong>Speed limit →</strong> The arm is not able to follow a command faster than 0.2 seconds.</li>
+            <li><strong>Sample period →</strong> The fastest mode limits forward Euler to a step below about 2 ms, which is why we discretised with a zero-order hold.</li>
+            <li><strong>Estimator →</strong> The observer should settle faster than the arm moves, so we aimed well above 5 per second.</li>
+          </ol>
         </div>
       </div>
     </div>
