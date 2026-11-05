@@ -156,24 +156,44 @@ Own project.  Must include, at minimum, a state-space model with controllability
 <!-- PART A INFO -->
 <section class="section">
   <div class="container is-max-desktop">
-    <!-- Abstract. -->
-    <div class="columns is-centered has-text-centered">
+    <div class="columns is-centered">
       <div class="column is-four-fifths">
-        <h2 class="title is-3">Part A information</h2>
-        <div class="content has-text-justified">
-          <p>
-            Description of the project. This is a sample text to show how the abstract would look like in your own project. You can use this space to describe the main idea of your project, the methods used, and the results obtained.
-          </p>
-          <p>
-            Orem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-          </p>
-          <p>
-            The video below explain how to set up your portfolio.
-          </p>
+        <h2 class="title is-3 has-text-centered">Part A information</h2>
+        <div class="content">
+
+          <h3 class="title is-4">1. Servo Torque</h3>
+          <div class="table-container">\[ \tau = K_p (u - q) - K_v \dot{q} \]</div>
+          <p>The motors are position servos. \(u\) is the position command, and \(K_p\) and \(K_v\) come from the XML.</p>
+
+          <h3 class="title is-4">2. Arm Dynamics</h3>
+          <div class="table-container">\[ M(q)\,\ddot{q} + g(q) = K_p (u - q) - K_v \dot{q} \]</div>
+          <p>The motor’s force needs to be enough to move the arm and to hold its weight against the force of gravity.</p>
+
+          <h3 class="title is-4">3. Holding Command</h3>
+          <p>At rest, \(\ddot{q} = 0\) and \(\dot{q} = 0\), so the servo torque must cancel gravity:</p>
+          <div class="table-container">\[ K_p (u_0 - q_0) = g(q_0) \quad \rightarrow \quad u_0 = q_0 + K_p^{-1}\, g(q_0) \]</div>
+
+          <h3 class="title is-4">4. Linearisation</h3>
+          <div class="table-container">\[ M_0\, \delta\ddot{q} = -(K_p + G_0)\, \delta q - K_v\, \delta\dot{q} + K_p\, \delta u \]</div>
+          <p>For small movements the arm’s speed changes because of the motor spring, the brake and your new command.</p>
+
+          <h3 class="title is-4">5. State-Space Form</h3>
+          <div class="table-container">\[ \dot{x} = A x + B\, \delta u \qquad\qquad y = C x \]</div>
+          <div class="table-container">\[ A = \begin{bmatrix} 0 &amp; I \\ -M_0^{-1}(K_p + G_0) &amp; -M_0^{-1} K_v \end{bmatrix} \]</div>
+          <div class="table-container">\[ B = \begin{bmatrix} 0 \\ M_0^{-1} K_p \end{bmatrix} \]</div>
+          <div class="table-container">\[ C = \begin{bmatrix} I &amp; 0 \end{bmatrix} \]</div>
+          <p>A says how the arm’s state changes by itself, B says how your commands change it, and C says what the sensors can see.</p>
+
+          <h3 class="title is-4">6. Controllability and Observability</h3>
+          <div class="table-container">\[ \text{Controllability Matrix} = \begin{bmatrix} B &amp; AB &amp; A^{2}B &amp; \cdots &amp; A^{11}B \end{bmatrix} \]</div>
+          <div class="table-container">\[ \text{Observability Matrix} = \begin{bmatrix} C \\ CA \\ CA^{2} \\ \vdots \\ CA^{11} \end{bmatrix} \]</div>
+          <p>If both rank tests give 12 out of 12, your commands can move the arm into any state, and the angle sensors are enough to work out every state, including speeds.</p>
+
         </div>
       </div>
     </div>
-  </section>
+  </div>
+</section>
     <!--/ Abstract. -->
 
 <!-- PART B INFO -->
