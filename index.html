@@ -314,6 +314,21 @@ Own project.  Must include, at minimum, a state-space model with controllability
     </div>
   </div>
 </section>
+
+            <h3 class="title is-4">Assumptions</h3>
+          <ol>
+            <li>Only small movements. The model is a straight-line approximation, so it is only accurate when the arm stays close to the starting pose.</li>
+            <li>The arm starts at rest. The model is built around the arm sitting still at the key frame, held up by the command <math><msub><mi>u</mi><mn>0</mn></msub></math>.</li>
+            <li>The motors behave like a simple spring and brake. The stiffness (<math><msub><mi>K</mi><mi>p</mi></msub></math>) and braking (<math><msub><mi>K</mi><mi>v</mi></msub></math>) numbers are fixed and come straight from the XML.</li>
+            <li>The swinging-out forces are ignored. They are tiny when the arm moves slowly, so they are left out.</li>
+            <li>Nothing touches anything. The arm doesn’t hit the table, the cube or itself.</li>
+            <li>The green cube is left out. As we were only told to pick the cube, it is unnecessary for us to account for the weight of the cube when the arm is moving.</li>
+            <li>The motors never hit their limits. Their maximum force and command range are ignored, which is fine for small movements.</li>
+            <li>There is no extra friction or damping. The XML only gives the joints a small spin weight and no other drag, so the motor brake is the only slowing force.</li>
+            <li>MuJoCo’s numbers are right. The mass matrix and the gravity are calculated by MuJoCo, so any small error there carries into the model.</li>
+            <li>Time is continuous. The model treats time as smooth, and a separate step turns it into a version that works in small time steps.</li>
+            <li>The camera is not part of the model. It only describes the arm. The camera and the marker belong to the sensing part.</li>
+          </ol>
     <!--/ Abstract. -->
 
 <!-- PART B INFO -->
