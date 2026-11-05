@@ -161,32 +161,152 @@ Own project.  Must include, at minimum, a state-space model with controllability
         <h2 class="title is-3 has-text-centered">Part A information</h2>
         <div class="content">
 
-          <h3 class="title is-4">1. Servo Torque</h3>
-          <div class="table-container">\[ \tau = K_p (u - q) - K_v \dot{q} \]</div>
-          <p>The motors are position servos. \(u\) is the position command, and \(K_p\) and \(K_v\) come from the XML.</p>
+          <h3 class="title is-4">Equations</h3>
 
-          <h3 class="title is-4">2. Arm Dynamics</h3>
-          <div class="table-container">\[ M(q)\,\ddot{q} + g(q) = K_p (u - q) - K_v \dot{q} \]</div>
+          <h4 class="title is-5">1. Servo Torque</h4>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <mi>τ</mi><mo>=</mo>
+              <msub><mi>K</mi><mi>p</mi></msub><mo>(</mo><mi>u</mi><mo>−</mo><mi>q</mi><mo>)</mo>
+              <mo>−</mo>
+              <msub><mi>K</mi><mi>v</mi></msub><mover accent="true"><mi>q</mi><mo>˙</mo></mover>
+            </mrow></math>
+          </div>
+          <p>The motors are position servos. <math><mi>u</mi></math> is the position command, and <math><msub><mi>K</mi><mi>p</mi></msub></math> and <math><msub><mi>K</mi><mi>v</mi></msub></math> come from the XML.</p>
+
+          <h4 class="title is-5">2. Arm Dynamics</h4>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <mi>M</mi><mo>(</mo><mi>q</mi><mo>)</mo><mover accent="true"><mi>q</mi><mo>¨</mo></mover>
+              <mo>+</mo>
+              <mi>g</mi><mo>(</mo><mi>q</mi><mo>)</mo>
+              <mo>=</mo>
+              <msub><mi>K</mi><mi>p</mi></msub><mo>(</mo><mi>u</mi><mo>−</mo><mi>q</mi><mo>)</mo>
+              <mo>−</mo>
+              <msub><mi>K</mi><mi>v</mi></msub><mover accent="true"><mi>q</mi><mo>˙</mo></mover>
+            </mrow></math>
+          </div>
           <p>The motor’s force needs to be enough to move the arm and to hold its weight against the force of gravity.</p>
 
-          <h3 class="title is-4">3. Holding Command</h3>
-          <p>At rest, \(\ddot{q} = 0\) and \(\dot{q} = 0\), so the servo torque must cancel gravity:</p>
-          <div class="table-container">\[ K_p (u_0 - q_0) = g(q_0) \quad \rightarrow \quad u_0 = q_0 + K_p^{-1}\, g(q_0) \]</div>
+          <h4 class="title is-5">3. Holding Command</h4>
+          <p>At rest, <math><mover accent="true"><mi>q</mi><mo>¨</mo></mover><mo>=</mo><mn>0</mn></math> and <math><mover accent="true"><mi>q</mi><mo>˙</mo></mover><mo>=</mo><mn>0</mn></math>, so the servo torque must cancel gravity:</p>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <msub><mi>K</mi><mi>p</mi></msub><mo>(</mo><msub><mi>u</mi><mn>0</mn></msub><mo>−</mo><msub><mi>q</mi><mn>0</mn></msub><mo>)</mo>
+              <mo>=</mo>
+              <mi>g</mi><mo>(</mo><msub><mi>q</mi><mn>0</mn></msub><mo>)</mo>
+              <mspace width="1em"></mspace><mo>→</mo><mspace width="1em"></mspace>
+              <msub><mi>u</mi><mn>0</mn></msub><mo>=</mo><msub><mi>q</mi><mn>0</mn></msub>
+              <mo>+</mo>
+              <msubsup><mi>K</mi><mi>p</mi><mrow><mo>−</mo><mn>1</mn></mrow></msubsup>
+              <mi>g</mi><mo>(</mo><msub><mi>q</mi><mn>0</mn></msub><mo>)</mo>
+            </mrow></math>
+          </div>
 
-          <h3 class="title is-4">4. Linearisation</h3>
-          <div class="table-container">\[ M_0\, \delta\ddot{q} = -(K_p + G_0)\, \delta q - K_v\, \delta\dot{q} + K_p\, \delta u \]</div>
+          <h4 class="title is-5">4. Linearisation</h4>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <msub><mi>M</mi><mn>0</mn></msub><mi>δ</mi><mover accent="true"><mi>q</mi><mo>¨</mo></mover>
+              <mo>=</mo>
+              <mo>−</mo><mo>(</mo><msub><mi>K</mi><mi>p</mi></msub><mo>+</mo><msub><mi>G</mi><mn>0</mn></msub><mo>)</mo><mi>δ</mi><mi>q</mi>
+              <mo>−</mo>
+              <msub><mi>K</mi><mi>v</mi></msub><mi>δ</mi><mover accent="true"><mi>q</mi><mo>˙</mo></mover>
+              <mo>+</mo>
+              <msub><mi>K</mi><mi>p</mi></msub><mi>δ</mi><mi>u</mi>
+            </mrow></math>
+          </div>
           <p>For small movements the arm’s speed changes because of the motor spring, the brake and your new command.</p>
 
-          <h3 class="title is-4">5. State-Space Form</h3>
-          <div class="table-container">\[ \dot{x} = A x + B\, \delta u \qquad\qquad y = C x \]</div>
-          <div class="table-container">\[ A = \begin{bmatrix} 0 &amp; I \\ -M_0^{-1}(K_p + G_0) &amp; -M_0^{-1} K_v \end{bmatrix} \]</div>
-          <div class="table-container">\[ B = \begin{bmatrix} 0 \\ M_0^{-1} K_p \end{bmatrix} \]</div>
-          <div class="table-container">\[ C = \begin{bmatrix} I &amp; 0 \end{bmatrix} \]</div>
+          <h4 class="title is-5">5. State-Space Form</h4>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <mover accent="true"><mi>x</mi><mo>˙</mo></mover>
+              <mo>=</mo><mi>A</mi><mi>x</mi><mo>+</mo><mi>B</mi><mi>δ</mi><mi>u</mi>
+              <mspace width="3em"></mspace>
+              <mi>y</mi><mo>=</mo><mi>C</mi><mi>x</mi>
+            </mrow></math>
+          </div>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <mi>A</mi><mo>=</mo>
+              <mrow>
+                <mo>[</mo>
+                <mtable>
+                  <mtr>
+                    <mtd><mn>0</mn></mtd>
+                    <mtd><mi>I</mi></mtd>
+                  </mtr>
+                  <mtr>
+                    <mtd><mo>−</mo><msubsup><mi>M</mi><mn>0</mn><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><mo>(</mo><msub><mi>K</mi><mi>p</mi></msub><mo>+</mo><msub><mi>G</mi><mn>0</mn></msub><mo>)</mo></mtd>
+                    <mtd><mo>−</mo><msubsup><mi>M</mi><mn>0</mn><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><msub><mi>K</mi><mi>v</mi></msub></mtd>
+                  </mtr>
+                </mtable>
+                <mo>]</mo>
+              </mrow>
+            </mrow></math>
+          </div>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <mi>B</mi><mo>=</mo>
+              <mrow>
+                <mo>[</mo>
+                <mtable>
+                  <mtr><mtd><mn>0</mn></mtd></mtr>
+                  <mtr><mtd><msubsup><mi>M</mi><mn>0</mn><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><msub><mi>K</mi><mi>p</mi></msub></mtd></mtr>
+                </mtable>
+                <mo>]</mo>
+              </mrow>
+            </mrow></math>
+          </div>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <mi>C</mi><mo>=</mo>
+              <mrow>
+                <mo>[</mo>
+                <mtable>
+                  <mtr><mtd><mi>I</mi></mtd><mtd><mn>0</mn></mtd></mtr>
+                </mtable>
+                <mo>]</mo>
+              </mrow>
+            </mrow></math>
+          </div>
           <p>A says how the arm’s state changes by itself, B says how your commands change it, and C says what the sensors can see.</p>
 
-          <h3 class="title is-4">6. Controllability and Observability</h3>
-          <div class="table-container">\[ \text{Controllability Matrix} = \begin{bmatrix} B &amp; AB &amp; A^{2}B &amp; \cdots &amp; A^{11}B \end{bmatrix} \]</div>
-          <div class="table-container">\[ \text{Observability Matrix} = \begin{bmatrix} C \\ CA \\ CA^{2} \\ \vdots \\ CA^{11} \end{bmatrix} \]</div>
+          <h4 class="title is-5">6. Controllability and Observability</h4>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <mtext>Controllability Matrix</mtext><mo>=</mo>
+              <mrow>
+                <mo>[</mo>
+                <mtable>
+                  <mtr>
+                    <mtd><mi>B</mi></mtd>
+                    <mtd><mi>A</mi><mi>B</mi></mtd>
+                    <mtd><msup><mi>A</mi><mn>2</mn></msup><mi>B</mi></mtd>
+                    <mtd><mo>⋯</mo></mtd>
+                    <mtd><msup><mi>A</mi><mn>11</mn></msup><mi>B</mi></mtd>
+                  </mtr>
+                </mtable>
+                <mo>]</mo>
+              </mrow>
+            </mrow></math>
+          </div>
+          <div class="table-container" style="text-align:center">
+            <math display="block"><mrow>
+              <mtext>Observability Matrix</mtext><mo>=</mo>
+              <mrow>
+                <mo>[</mo>
+                <mtable>
+                  <mtr><mtd><mi>C</mi></mtd></mtr>
+                  <mtr><mtd><mi>C</mi><mi>A</mi></mtd></mtr>
+                  <mtr><mtd><mi>C</mi><msup><mi>A</mi><mn>2</mn></msup></mtd></mtr>
+                  <mtr><mtd><mo>⋮</mo></mtd></mtr>
+                  <mtr><mtd><mi>C</mi><msup><mi>A</mi><mn>11</mn></msup></mtd></mtr>
+                </mtable>
+                <mo>]</mo>
+              </mrow>
+            </mrow></math>
+          </div>
           <p>If both rank tests give 12 out of 12, your commands can move the arm into any state, and the angle sensors are enough to work out every state, including speeds.</p>
 
         </div>
