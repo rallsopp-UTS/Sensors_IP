@@ -322,6 +322,19 @@ Own project.  Must include, at minimum, a state-space model with controllability
             <li>Time is continuous. The model treats time as smooth, and a separate step turns it into a version that works in small time steps.</li>
             <li>The camera is not part of the model. It only describes the arm. The camera and the marker belong to the sensing part.</li>
           </ol>
+                    <h3 class="title is-4">Structural Reasoning for Full Rank</h3>
+ 
+          <h4 class="title is-5">Controllability</h4>
+          <p>Take the first 2 block columns of the controllability matrix, <math><mi>B</mi></math> and <math><mi>A</mi><mi>B</mi></math>. The 12×12 matrix has zeros in the top left, and both off-diagonal blocks are <math><msubsup><mi>M</mi><mn>0</mn><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><msub><mi>K</mi><mi>p</mi></msub></math>. A matrix of that shape is full rank whenever <math><msubsup><mi>M</mi><mn>0</mn><mrow><mo>−</mo><mn>1</mn></mrow></msubsup><msub><mi>K</mi><mi>p</mi></msub></math> can be inverted. It can, for 2 reasons.</p>
+          <ul>
+            <li><math><msubsup><mi>M</mi><mn>0</mn><mrow><mo>−</mo><mn>1</mn></mrow></msubsup></math> is the inverse of <math><msub><mi>M</mi><mn>0</mn></msub></math>, which comes from the DfDa line. A mass matrix is positive definite, since every joint has inertia plus the armature term, so it can be inverted.</li>
+            <li><math><msub><mi>K</mi><mi>p</mi></msub></math> is diagonal with positive entries, so it can be inverted too.</li>
+          </ul>
+          <p>Each command pushes its own joint acceleration, and the identity block <math><mi>I</mi></math> in the top row of <math><mi>A</mi></math> carries that through into the joint angles, so no direction is out of reach.</p>
+ 
+          <h4 class="title is-5">Observability</h4>
+          <p>The <math><mi>C</mi></math> matrix is <math><mo>[</mo><mi>I</mi><mo>,</mo><mn>0</mn><mo>]</mo></math>, and multiplying it by <math><mi>A</mi></math> gives <math><mo>[</mo><mn>0</mn><mo>,</mo><mi>I</mi><mo>]</mo></math>. Stacked together, these form an identity matrix, which has rank 12 trivially. In plain words, the encoders read the angles directly, and the speeds are how fast those angles change, so the speeds can be recovered.</p>
+          <p><math><msub><mi>G</mi><mn>0</mn></msub></math> never appears in <math><mo>[</mo><mi>B</mi><mo>,</mo><mi>A</mi><mi>B</mi><mo>]</mo></math>, and <math><msub><mi>K</mi><mi>v</mi></msub></math> only sits in the bottom-right block, which doesn’t change the rank. So the full-rank result holds at any pose and with any damping, not just the key frame. It would only break if a <math><msub><mi>K</mi><mi>p</mi></msub></math> entry were zero or if <math><mi>C</mi></math> lost an encoder.</p>
         </div>
       </div>
     </div>
