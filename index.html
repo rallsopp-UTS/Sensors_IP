@@ -322,38 +322,6 @@ Own project.  Must include, at minimum, a state-space model with controllability
             <li>Time is continuous. The model treats time as smooth, and a separate step turns it into a version that works in small time steps.</li>
             <li>The camera is not part of the model. It only describes the arm. The camera and the marker belong to the sensing part.</li>
           </ol>
-            <h1>Structural Reasoning For Full Rank</h1>
-              <h2>Controllability</h2>
-              <p>
-                Take the first 2 block columns of the controllability matrix, B and A @ B.
-                The 12×12 matrix has zeros in the top left, and both off-diagonal blocks are
-                Minv @ Kp. A matrix of that shape is full rank whenever Minv @ Kp can be
-                inverted. It can, for 2 reasons.
-              </p>
-              <ul>
-                <li>
-                  Minv is the inverse of M0, which comes from DfDa line. A mass matrix is
-                  positive definite, since every joint has inertia plus the -,1 armature, so
-                  it can be inverted.
-                </li>
-                <li>Kp is diagonal with positive entries, so it can be inverted too.</li>
-              </ul>
-              <p>
-                Each command pushes its own joint acceleration, and the identity block I in
-                the top row of A carries that through into the joint angles, so no direction
-                is out of reach.
-              </p>
-             
-              <h2>Observability</h2>
-              <p>
-                The C line is [I, Z], and multiplying it by A gives you [Z, I]. The identity
-                has rank 12 trivially. In plain words, the encoders read the angles directly,
-                and the speeds are how fast those angles change, so the speeds can be
-                recovered. G0 never appears in [B, A@B], and Kv only sits in the bottom-right
-                block, which doesn’t change the rank. So the full-rank result holds at any
-                pose and with any damping, not just your key frame. It would only break if a
-                Kp entry were zero or if C lost and encoder
-              </p>
         </div>
       </div>
     </div>
