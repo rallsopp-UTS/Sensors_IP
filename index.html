@@ -375,8 +375,6 @@ Own project.  Must include, at minimum, a state-space model with controllability
         <h2 class="title is-3 has-text-centered">Part C: Estimation</h2>
         <div class="content">
 
-          <p>A Kalman filter for the UR3 joint state. Anything highlighted <mark>like this</mark> still needs filling in before you submit.</p>
-
           <h3 class="title is-4">1. What is estimated, and why</h3>
           <p>The controller (Part D) and the camera frame chain (Part B) need the arm’s joint angles and speeds, but the only sensors are noisy joint encoders, which measure <strong>angles only</strong>. The estimator therefore has to clean up the noisy angle readings, and estimate the six joint <strong>speeds</strong>, which no sensor measures.</p>
 
@@ -524,7 +522,7 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
           <p>What the results do and do not support:</p>
           <ul>
             <li><strong>Linearised model.</strong> The model is valid near the keyframe. The numbers above are for the pick trajectory used here. A pick that moves the arm much further from the keyframe would degrade accuracy and would call for re-linearising along the path or an EKF.</li>
-            <li><strong>One run, one noise sequence.</strong> Q was measured, tuned and scored on the same logged run (noise seed 0), and the sweeps replay that one run. The results show consistency on this run. They do not yet show it holds across other noise realisations or object positions. <mark>Replace with repeated-trial results if you complete them.</mark></li>
+            <li><strong>One run, one noise sequence.</strong> Q was measured, tuned and scored on the same logged run (noise seed 0), and the sweeps replay that one run. The results show consistency on this run. They do not yet show it holds across other noise realisations or object positions.</li>
             <li><strong>Truth used for tuning.</strong> Q was measured offline using simulator truth. The running filter never sees truth.</li>
             <li><strong>Assumed noise.</strong> The 0.002 rad encoder noise is the simulator’s own injected noise, so NIS verifies the filter against a known noise level, not against a real sensor.</li>
             <li><strong>Speed error floor.</strong> The speed accuracy is limited by the model error, not by sensor noise: raising R improves it but costs position accuracy.</li>
