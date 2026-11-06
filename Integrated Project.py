@@ -53,11 +53,19 @@ class IP:
         #self.Qd = np.diag([1e-4**2]*6 + [5e-2**2 * 27.5]*6) * self.Ts * 3
         w_pos = np.array([4.55e-7, 2.59e-6, 1.44e-6, 2.41e-7, 3.07e-7, 6.63e-8])
         w_vel = np.array([3.70e-4, 2.28e-3, 1.13e-3, 1.26e-4, 2.44e-4, 1.15e-4])
-        self.Qd = np.diag(np.concatenate([w_pos, w_vel]) ** 2) * 220
+        self.Qd = np.diag(np.concatenate([w_pos, w_vel]) ** 2) * 0.35
         self.Rn = np.eye(6) * self.sig_q**2
         self.xh = np.zeros(12)
         self.P = np.eye(12) * 1e-2
         self.q_hat = self.q0.copy()
+
+        self.pred_data = mujoco.MjData(self.model)
+        mujoco.mj_resetDataKeyframe(self.model, self.pred_data, 0)
+        self.rest_qpos = self.pred_data.qpos.copy() # cube etc. held at rest
+        self.nv = self.model.nv
+        self.idx = list(range(6)) + [self.nv + i for i in range(6)] # arm pos + arm vel
+        self.F = self.A_d.copy() # re-linearised during the run
+        self.xh = np.hstack([self.q0, np.zeros(6)]) # absolute state, not a deviation
         
         #LQR Stuff
         self.K_lqr = self.LQR()
@@ -189,21 +197,34 @@ class IP:
             print("Joint states + Error", values)
         return values
 
-    def KFStep(self, u_prev, q_meas):
-        A, B, C = self.A_d, self.B_d, self.C_d
-        u = u_prev - self.u0
-        y = q_meas - self.q0
-        xp = A @ self.xh + B @ u # predict
-        Pp = A @ self.P @ A.T + self.Qd
-        S = C @ Pp @ C.T + self.Rn
-        K = Pp @ C.T @ np.linalg.inv(S)
-        nu = y - C @ xp
-        self.xh = xp + K @ nu # correct
-        IKC = np.eye(12) - K @ C
-        self.P = IKC @ Pp @ IKC.T + K @ self.Rn @ K.T
+    def KFStep(self, u_prev, q_meas, relin=False):
+        d = self.pred_data
+        d.qpos[:] = self.rest_qpos                     # cube stays at its rest pose
+        d.qvel[:] = 0
+        d.qpos[:6] = self.xh[:6]
+        d.qvel[:6] = self.xh[6:]
+        d.ctrl[:6] = u_prev
+ 
+        if relin:                                      # refresh F at the current estimate
+            nx = 2 * self.nv + self.model.na
+            A = np.zeros((nx, nx))
+            mujoco.mjd_transitionFD(self.model, d, 1e-6, True, A, None, None, None)
+            self.F = A[np.ix_(self.idx, self.idx)]
+
+        mujoco.mj_step(self.model, d)                  # predict with the real dynamics
+        xp = np.hstack([d.qpos[:6], d.qvel[:6]])
+        Pp = self.F @ self.P @ self.F.T + self.Qd
+
+        H = self.C_d                                   # [I 0], measures joint angles
+        S = H @ Pp @ H.T + self.Rn
+        K = Pp @ H.T @ np.linalg.inv(S)
+        nu = q_meas - xp[:6]                           # absolute, no q0 or u0 offsets
+        self.xh = xp + K @ nu
+        IKH = np.eye(12) - K @ H
+        self.P = IKH @ Pp @ IKH.T + K @ self.Rn @ K.T
         self.nis = nu @ np.linalg.solve(S, nu)
-        self.q_hat = self.xh[:6] + self.q0
-        return self.q_hat, self.xh[6:]
+        self.q_hat = self.xh[:6].copy()
+        return self.q_hat, self.xh[6:].copy()
 
     def LQR(self):
         q_max  = np.deg2rad([2]*6)   # position error rad
@@ -343,7 +364,7 @@ class IP:
 
         mujoco.mj_resetDataKeyframe(model, data, 0)
         mujoco.mj_forward(model, data)
-        self.xh[:] = 0
+        self.xh = np.hstack([self.q0, np.zeros(arm)])
         self.P = np.eye(12) * 1e-2
         u_prev = self.u0.copy()
         x_hat = np.hstack([self.q0, np.zeros(arm)])              # estimate of [q, qdot]
@@ -359,7 +380,7 @@ class IP:
                 for k in range(n_steps):
                     #1. SENSING (Part B)
                     q_meas = self.ReadEncoders(k) #simulated encoder, the only place plant state is read for the loop.
-                    q_hat, qd_hat = self.KFStep(u_prev, q_meas)
+                    q_hat, qd_hat = self.KFStep(u_prev, q_meas, relin=(k % 10 == 0))
                     x_hat = np.hstack([q_hat, qd_hat]) 
                     
                     if k % cam_every == 0:
@@ -415,26 +436,36 @@ class IP:
         
         return log
 
-    def ReplayKF(self, log, q_scale=1.0, r_scale=1.0, s=500):
-        """Re-runs the filter on the logged run with Q and R scaled. 1.0 = current setting."""
-        A, B, C = self.A_d, self.B_d, self.C_d
+    def ReplayKF(self, log, q_scale=1.0, r_scale=1.0, s=500, relin_every=10):
+        """Re-runs the MuJoCo-predict filter on a logged run with Q and R scaled."""
         Qd, Rn = self.Qd * q_scale, self.Rn * r_scale
         U = np.array(log["u"]); Ym = np.array(log["q_meas"]); Xt = np.array(log["x_true"])
-        xh = np.zeros(12); P = np.eye(12) * 1e-2
+        d, H = self.pred_data, self.C_d
+        nx = 2 * self.nv + self.model.na
+        xh = np.hstack([self.q0, np.zeros(6)]); P = np.eye(12) * 1e-2
+        F = self.A_d.copy()
         E, NEES, NIS, COV = [], [], [], []
         for k in range(len(Ym)):
             u_prev = self.u0 if k == 0 else U[k - 1]
-            xp = A @ xh + B @ (u_prev - self.u0)
-            Pp = A @ P @ A.T + Qd
-            S = C @ Pp @ C.T + Rn
-            K = Pp @ C.T @ np.linalg.inv(S)
-            nu = (Ym[k] - self.q0) - C @ xp
+            d.qpos[:] = self.rest_qpos; d.qvel[:] = 0
+            d.qpos[:6] = xh[:6]; d.qvel[:6] = xh[6:]; d.ctrl[:6] = u_prev
+            if k % relin_every == 0:
+                A = np.zeros((nx, nx))
+                mujoco.mjd_transitionFD(self.model, d, 1e-6, True, A, None, None, None)
+                F = A[np.ix_(self.idx, self.idx)]
+            mujoco.mj_step(self.model, d)
+            xp = np.hstack([d.qpos[:6], d.qvel[:6]])
+            Pp = F @ P @ F.T + Qd
+            S = H @ Pp @ H.T + Rn
+            K = Pp @ H.T @ np.linalg.inv(S)
+            nu = Ym[k] - xp[:6]
             xh = xp + K @ nu
-            IKC = np.eye(12) - K @ C
-            P = IKC @ Pp @ IKC.T + K @ Rn @ K.T
+            IKH = np.eye(12) - K @ H
+            P = IKH @ Pp @ IKH.T + K @ Rn @ K.T
             if k >= s:
-                e = Xt[k] - np.hstack([xh[:6] + self.q0, xh[6:]])   # truth used only for scoring
-                E.append(e); NEES.append(e @ np.linalg.solve(P, e)); NIS.append(nu @ np.linalg.solve(S, nu))
+                e = Xt[k] - xh                                  # truth used only for scoring
+                E.append(e); NEES.append(e @ np.linalg.solve(P, e))
+                NIS.append(nu @ np.linalg.solve(S, nu))
                 COV.append((np.abs(e) < 3 * np.sqrt(np.diag(P))).mean())
         E = np.array(E)
         return dict(rmse_pos=np.sqrt((E[:, :6]**2).mean()), rmse_vel=np.sqrt((E[:, 6:]**2).mean()),
@@ -454,12 +485,27 @@ class IP:
         Xh = np.array(log["x_hat"]); sd = np.array(log["sigma"]); P = np.array(log["P"])
 
         if plot:
-            j = joint # 6 = joint 1 SPEED (never measured by the encoders)
-            plt.plot(t, Xt[:, j], 'k', label='true')
-            plt.plot(t, Xh[:, j], 'r--', label='estimate')
-            plt.fill_between(t, Xh[:, j]-3*sd[:, j], Xh[:, j]+3*sd[:, j], alpha=0.2, label='±3σ')
-            plt.xlabel("time [s]"); plt.ylabel("joint 1 speed [rad/s]")
-            plt.legend(); plt.savefig("joint1_speed_estimate.png", dpi=200); plt.show()
+            j = joint  # 6 = joint 1 speed
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.plot(t, Xt[:, j], 'k', label='true')
+            ax.plot(t, Xh[:, j], 'r--', label='estimate')
+            ax.fill_between(t, Xh[:, j]-3*sd[:, j], Xh[:, j]+3*sd[:, j], alpha=0.3, label='±3σ')
+            ax.set_xlabel("time [s]"); ax.set_ylabel("joint 1 speed [rad/s]")
+            ax.legend(loc="upper right")
+
+            # zoomed inset (change t0/t1 to look at a different part of the run)
+            t0, t1 = 5.0, 5.5
+            m = (t >= t0) & (t <= t1)
+            axins = ax.inset_axes([0.3, 0.06, 0.65, 0.3])
+            axins.plot(t[m], Xt[m, j], 'k')
+            axins.plot(t[m], Xh[m, j], 'r--')
+            axins.fill_between(t[m], Xh[m, j]-3*sd[m, j], Xh[m, j]+3*sd[m, j], alpha=0.3)
+            axins.set_xlim(t0, t1)
+            pad = 4 * sd[m, j].max()
+            axins.set_ylim(Xh[m, j].min() - pad, Xh[m, j].max() + pad)
+            ax.indicate_inset_zoom(axins, edgecolor="gray")
+
+            plt.savefig("joint1_speed_estimate.png", dpi=200); plt.show()
 
         err = Xt - Xh  # s = samples skipped for the start-up period
         nees = [e @ np.linalg.solve(Pk, e) for e, Pk in zip(err[s:], P[s:])]
@@ -474,7 +520,7 @@ class IP:
         print("RMSE speed   :", results["rmse_vel"])
         print("NEES (aim ~12):", results["nees"])
         print("NIS  (aim ~6) :", results["nis"])
-        print("3σ coverage (aim ~0.997):", results["cover3"])        
+        print("3σ coverage (aim ~0.997):", results["cover3"])
         return results
         
     def EstimateQ(self, log, s=500):
@@ -492,7 +538,9 @@ class IP:
 if __name__ == '__main__':
     run = IP()
     
-    log = run.RunPick(T=20.0, Lambda=0.3, noise=5.0)
-       
+    log = run.RunPick(T=20.0, Lambda=0.3, noise=15)
+    run.EvaluateEstimator(log)
+    run.SweepTable(log) # this is if you need tables
+    print("Q diag:", np.diag(run.Qd)); print("R diag:", np.diag(run.Rn))   
     run.renderer.close()
     run.renderer_watcher.close()
