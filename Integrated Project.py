@@ -145,7 +145,7 @@ class IP:
         Kv = np.diag(-model.actuator_biasprm[:, 2])                                                     # Servo damping per joint
 
         # Find the command that holds the arm still
-        data.ctrl[:] = data.qpos[:arm] + data.qfrc_bias[:arm] / np.diag(Kp)                             # command = current angle + (gravity torque / servo stiffness)
+        data.ctrl[:arm] = data.qpos[:arm] + data.qfrc_bias[:arm] / np.diag(Kp)                             # command = current angle + (gravity torque / servo stiffness)
         mujoco.mj_forward(model, data)                                                                  # refresh derived quantities with new command
         self.q0 = data.qpos[:arm].copy()                                                                # save the key frame joint angles, the opperating point the model is buklt around
         self.u0 = data.ctrl[:arm].copy()                                                                # save the command that holds that pose, used later as gravity feedforward
