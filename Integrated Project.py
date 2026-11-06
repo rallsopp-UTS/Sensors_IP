@@ -64,7 +64,7 @@ class IP:
         
         #PBVS Stuff
         self.Rx_pi = np.diag([1.0, -1.0, -1.0])
-        self.c_starTm = SE3.Trans(0, 0, 0.15) @ SE3.Rx(pi) @ SE3.Rz(pi/2) @ SE3.Trans(0.01, 0, 0)
+        self.c_starTm = SE3.Trans(0, 0, 0.12) @ SE3.Rx(pi) @ SE3.Rz(pi/2) @ SE3.Trans(0.01, 0, 0)
 
     def TakePhoto(self): 
         """
@@ -492,11 +492,7 @@ class IP:
 if __name__ == '__main__':
     run = IP()
     
-    log = run.RunPick(T=30.0, Lambda=0.3)
-    run.EvaluateEstimator(log)
-    run.SweepTable(log) # this is if you need tables
-    #run.SweepTable(log, values=(1, 1.25, 1.5, 2, 3)) # this was to find q since I was close, it was up to 100 to narrow down the location
-    run.EstimateQ(log)
-    print("Q diag:", np.diag(run.Qd)); print("R diag:", np.diag(run.Rn))   
+    log = run.RunPick(T=20.0, Lambda=0.3, noise=5.0)
+       
     run.renderer.close()
     run.renderer_watcher.close()
