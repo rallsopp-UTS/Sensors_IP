@@ -467,31 +467,23 @@ Update:   S = H P⁻ Hᵀ + R             K = P⁻ Hᵀ S⁻¹
             </table>
           </div>
 
-          <p><strong>Step 2: the scale.</strong> Q is these values squared, multiplied by one overall factor of <strong>0.35</strong>, chosen so that NEES is about 12 (the sweep in section 6 shows the effect of changing it). 0.35 was found through sweeps completed in the code, the overall factore started with 1 and it showed that between .3 (NEES of _) and .4 (NEES of _), so 0.35 was chosen. The sweep table an be seen below.</p>
-          <p>The earlier linear filter needed a factor of <strong>220</strong> on the same values to stay consistent. The new factor is about 600 times smaller. This suggests most of the model error has been removed by predicting with MuJoCo’s dynamics and refreshing the Jacobian, so the filter needs much less allowance for it. This is our interpretation and was not tested separately. The earlier filter’s sweeps are shown below.</p>
+          <p><strong>Step 2: the scale.</strong> Q is these values squared, multiplied by one overall factor of 0.35, chosen so that NEES is about 12 (the sweep in section 6 shows the effect of changing it). 0.35 was found through sweeps completed in the code, the overall factore started with 1 and it showed that between .3 (NEES of 13.8) and .4 (NEES of 10.4), so 0.35 was chosen. The sweep table can be seen below.</p>
+          <div class="hero-body">
+            <figure class="image">
+              <img src="./static/images/results/sweep_1.png"
+                   alt="Screenshot of a narrower sweep of the Q scale factor for the earlier linear filter around the chosen value">
+            </figure>
+          </div>
+          <p>The earlier linear filter needed a factor of 220 on the same values to stay consistent. The new factor is about 600 times smaller. This suggests most of the model error has been removed by predicting with MuJoCo’s dynamics and refreshing the Jacobian, so the filter needs much less allowance for it. This is our interpretation and was not tested separately. The earlier filter’s sweeps are shown below.</p>
 
-          <div class="columns is-centered">
-
-            <div class="column">
-              <figure class="image">
-                <img src="./static/images/results/sweep_1.png"
-                     alt="Screenshot of a sweep of the Q scale factor for the earlier linear filter, with NEES for each value">
-                <figcaption class="is-size-7 mt-2">
-                  Sweep of the Q scale factor for the earlier linear filter (factor 220). <mark>Say whether this is the wide or the narrow sweep.</mark>
-                </figcaption>
-              </figure>
-            </div>
-
-            <div class="column">
-              <figure class="image">
-                <img src="./static/images/results/sweep_2.png"
-                     alt="Screenshot of a narrower sweep of the Q scale factor for the earlier linear filter around the chosen value">
-                <figcaption class="is-size-7 mt-2">
-                  Narrower sweep of the Q scale factor for the earlier linear filter (factor 220).
-                </figcaption>
-              </figure>
-            </div>
-
+          <div class="hero-body">
+            <figure class="image">
+              <img src="./static/images/results/sweep_2.png"
+                   alt="Screenshot of a narrower sweep of the Q scale factor for the earlier linear filter around the chosen value">
+              <figcaption class="is-size-7 mt-2">
+                Narrower sweep of the Q scale factor for the earlier linear filter (factor 220).
+              </figcaption>
+            </figure>
           </div>
 
           <h3 class="title is-4">5. Results</h3>
@@ -515,14 +507,27 @@ Update:   S = H P⁻ Hᵀ + R             K = P⁻ Hᵀ S⁻¹
           <p>These errors are much smaller than the earlier linear filter’s (about 0.00025 rad and 0.004 rad/s on a similar but different run, so only a rough comparison). The main reason is that the filter now predicts with the same physics engine that drives the arm in the simulation, so its model is almost exactly right. On a real robot the model would not match this well, so these error sizes should not be expected to carry over.</p>
           <p><strong>What NEES and NIS mean.</strong> NEES checks the filter’s uncertainty against its real error over all 12 states (it needs truth). NIS checks the filter’s prediction of each encoder reading against what the encoder really said (it does not need truth).</p>
 
-          <figure class="image">
-            <img src="./static/images/results/joint1_speed_estimate.png"
-                 alt="Joint 1 speed over the 20 second run: true value, estimate and plus or minus three sigma band, with an inset zoom of 5.0 to 5.5 seconds">
-            <figcaption class="is-size-7 mt-2">
-              Joint 1 speed, which the encoders never measure. The estimate follows the truth. At full scale the ±3σ band is too narrow to see, so the inset zooms in on 5.0 to 5.5 s, where the band contains the truth.
-            </figcaption>
-          </figure>
-
+            <div class="column">
+              <figure class="image">
+                <img src="./static/images/results/joint1_speed_estimate.png"
+                     alt="Joint 1 speed over the 20 second run: true value, estimate and plus or minus three sigma band, with an inset zoom of 5.0 to 5.5 seconds">
+                <figcaption class="is-size-7 mt-2">
+                  Joint 1 speed, which the encoders never measure. The estimate follows the truth. At full scale the ±3σ band is too narrow to see, so the inset zooms in on 5.0 to 5.5 s, where the band contains the truth.
+                </figcaption>
+              </figure>
+            </div>
+          
+            <div class="column">
+              <figure class="image">
+                <img src="./static/images/results/joint1_speed_estimate_zoom.png"
+                     alt="Zoomed-in view of joint 1 speed showing the separation between the estimate and the true value">
+                <figcaption class="is-size-7 mt-2">
+                  Zoomed in view to show the separation of estimate and true
+                </figcaption>
+              </figure>
+            </div>
+          
+          </div>
           <h3 class="title is-4">6. What happens when Q or R change</h3>
           <p>We replayed the same logged run through the filter with Q or R scaled up and down. A scale of 1 is the final setting. </p>
 
