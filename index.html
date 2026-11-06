@@ -595,26 +595,51 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
     <!--/ Abstract. -->
 
   <!-- PART D INFO -->
+<!-- PART D INFO -->
 <section class="section">
   <div class="container is-max-desktop">
-    <!-- Abstract. -->
-    <div class="columns is-centered has-text-centered">
+    <div class="columns is-centered">
       <div class="column is-four-fifths">
-        <h2 class="title is-3">Part D information</h2>
-        <div class="content has-text-justified">
-          <p>
-            Description of the project. This is a sample text to show how the abstract would look like in your own project. You can use this space to describe the main idea of your project, the methods used, and the results obtained.
-          </p>
-          <p>
-            Orem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-          </p>
-          <p>
-            The video below explain how to set up your portfolio.
-          </p>
+        <h2 class="title is-3 has-text-centered">Part D information</h2>
+        <div class="content">
+
+          <h3 class="title is-4">Position-Based Visual Servoing (PBVS)</h3>
+          <p>PBVS was chosen as the visual servoing method as it integrated well with RGB-D camera and the ArUco tag detection. PBVS uses the camera to estimate the 3D pose of the target and drive the error between the ideal pose (in the markers frame of reference) and the current end effector pose to zero. The control of the system is completed in 3D space, typically in the form of a near straight line. This allows safety to be considered through the environment as it does not take extreme paths to get to the locations.</p>
+
+          <p>The PBVS pipeline works by:</p>
+          <ol>
+            <li><strong>Measure the object in the camera frame</strong><br>
+              This is achieved by the RGB-D camera and the ArUco tag using the machine vision toolbox</li>
+            <li><strong>Use the Hand-eye transform</strong><br>
+              This displays the pose of the object comparative to the end effector.</li>
+            <li><strong>Calculate the pose error from the goal pose</strong><br>
+              The goal pose is an offset to the object. Determine the rotational and translational errors to the object.</li>
+            <li><strong>Apply the control law</strong><br>
+              Use the control law <code>v = Lambda * e</code> to command a camera velocity that reduces this error. To be useful this has to be transformed to the end effector location.</li>
+            <li><strong>Convert EE velocity to Joint Velocities</strong><br>
+              Using the Jacobian of the end effector (<code>jacSite()</code>), the joint velocities can be found using the end effector cartesian velocities. Our system has utilised the Damped Least Squares Pseudo-inverse of the Jacobian to calculate the joint velocities as it allows the system to continue running if it gets close to a singularity. This is a precautionary system to ensure nothing unexpected occurs.</li>
+            <li><strong>Convert joint velocities into joint states</strong><br>
+              Once the joint velocities are determined, they can then be integrated into the target joint angles for the system (<code>q_ref k+1 = q_ref k + qd_ref * timestep</code>). These joint states are fed forward and used in the LQR.</li>
+            <li><strong>Repeat</strong><br>
+              This pipeline is repeated each time an image is taken, equating to every 0.1s of simulation time.</li>
+          </ol>
+
+<pre><code>v = Lambda * e
+q_ref k+1 = q_ref k + qd_ref * timestep</code></pre>
+
+          <h3 class="title is-4">LQR</h3>
+          <p>The system uses a discrete LQR which takes the current estimate of the current state (<code>x_hat</code>) and the target joint states (<code>q_ref</code>) and outputs a command (<code>u</code>) applied to each of the ur3e joints.</p>
+
+          <p>The dLQR gain (<code>K</code>) is determined using <code>A_d</code> and <code>B_d</code> which was provided from the State Space model in part A. Q and R are weightings determined by their impact on the entire system. Q was determined by the impact on position and velocity weights separately. Using Bryson's rule (<code>weight = 1/(largest acceptable)**2</code>) weightings of 0.035 rad (2 deg) and 0.35 (20 deg/s) rad/s were chosen for all positions and velocities respectively. These values were derived from the requirements of the system, the position weighting was chosen to provide a maximum error that could only move the end effector slightly whilst not being too tight that it begins to react to encoder noise. Making these values tighter is wasteful as the LQR has to aim for the target joint state well enough that the marker stays in view; PBVS does the bulk of the joint position decisions, as the camera corrects rotation or translation issues, thus a tight position weight is less important. The velocity weighting impacts unexpected large velocities, and as the <code>e_qd</code> is the raw estimated velocity the system is continuously damping the velocity, even when moving. Increasing the overall velocity weight could cause motion to resist this "natural" damping and cause tracking lag throughout the system. Each actuator in the ur3e arm has its own slight damping value (<code>Kv</code>) and thus extra damping is not required from the LQR. The maximum allowable error for the control weighting (R) was chosen to be 0.1 rad as it allows the controller to be slightly aggressive when necessary, however limits potential over-aggressiveness when torques are requested. As the joints are already controlled by PD action in their creation, within the xml file, large commands from the LQR can cause demand large torques, particularly on the heavier joints in the system.</p>
+
+          <p>The feedback command (<code>fb_u</code>) is described by the LQR, however the feedforward command (<code>ff_u</code>) requires the system to be simulated at the target joint states, on another data stream (<code>ff_data</code>) to determine the impact gravity and other forces has on each robot link at this configuration, to hold it still without moving (thus <code>qvel</code> is set to 0). This is recomputed every LQR step as the command changes largely from the initialisation at the keyframe from part A, especially when the arm is reaching further out.</p>
+
         </div>
       </div>
     </div>
-  </section>
+  </div>
+</section>
+<!--/ PART D INFO -->
     <!--/ Abstract. -->
 
   <!-- PART E INFO -->
