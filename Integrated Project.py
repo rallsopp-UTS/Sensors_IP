@@ -339,7 +339,7 @@ class IP:
         arm = 6
         dt = model.opt.timestep
         n_steps = int(T / dt)
-        cam_every = 50 # TODO Ryan Camera rate in steps
+        cam_every = 50 
 
         mujoco.mj_resetDataKeyframe(model, data, 0)
         mujoco.mj_forward(model, data)
@@ -383,7 +383,6 @@ class IP:
                     q_ref = q_ref + qd_ref * dt 
         
                     # 3. CONTROL (Part D)
-                    # TODO (part D): PBVS outer loop into joint target, LQR inner loop uses x_hat to compute u
                     u = self.ControlLQR(x_hat, q_ref)
         
                     x_true_k = np.hstack([data.qpos[:arm], data.qvel[:arm]])
@@ -404,7 +403,7 @@ class IP:
                     log["nis"].append(self.nis)
                     log["PBVS visual error"].append(visual_err) 
                     log["q_meas"].append(q_meas)
-                    # TODO (Part E): also log targets true Postion
+                    
                 data.ctrl[self.grip_id] = 255
                 mujoco.mj_step(model, data)
                 for _ in range(85):
