@@ -66,6 +66,7 @@
   <worldbody>
     <geom name="__mjv_default_floor" type="plane" pos="0 0 -1" size="0 0 0.125" rgba="0 0 0 0" contype="15" conaffinity="15"/>
     <light name="spotlight" mode="targetbodycom" target="wrist_3_link" pos="0 -1 2"/>
+    <camera name="fixed_cam" pos="0.5 -0.7 1.2" xyaxes="1 0 0 0 0.6 0.8"/>
     <body name="base" childclass="ur3e" pos="0 0 0.25">
       <inertial mass="2" pos="0 0 0" diaginertia="0.0030532 0.0030532 0.005625"/>
       <geom mesh="base_0" material="jointgray" class="visual"/>
