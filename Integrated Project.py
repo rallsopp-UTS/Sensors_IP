@@ -183,7 +183,11 @@ class IP:
         return sysd.A, sysd.B, sysd.C
 
     def ReadEncoders(self):
-        return self.data.qpos[:6] + self.rng.normal(0, self.sig_q, 6)
+        values = self.data.qpos[:6] + self.rng.normal(0, self.sig_q, 6)
+        if counter % 200 == 0:
+            print("Joint states", self.data.qpos[:6])
+            print("Joint states + Error", values)
+        return values
 
     def KFStep(self, u_prev, q_meas):
         A, B, C = self.A_d, self.B_d, self.C_d
@@ -264,6 +268,10 @@ class IP:
         Detects an ArUco marker in an RGB img and provides the Pose from camera to marker cTm. show=True to display the image/s
         """
         im_rgb = Image(rgb)
+        if noise:
+            out = im_rgb.astype(np.float32)
+            out += self.rng.normal(0, sigma, out.shape)
+            im_rgb = np.clip(out, 0, 255).astype(np.uint8)
         if show:
             self.DisplayImage(im_rgb)
         fids = im_rgb.fiducial(dict="4x4_50", K=self.K_cam, side=0.075) #detection of the marker
@@ -273,7 +281,7 @@ class IP:
         print("Marker Detected")
         return fids[0].pose
 
-    def PBVS(self, rgb, q_hat, show=False, Lambda=0.1, mu=0.02):
+    def PBVS(self, rgb, q_hat, show=False, Lambda=0.1, mu=0.02, sigma=5.0):
         d = self.est_data
         
         d.qpos[self.arm_ids] = q_hat
@@ -282,7 +290,7 @@ class IP:
         mujoco.mj_comPos(self.model, d)
         mujoco.mj_camlight(self.model, d)
         
-        cTm = self.DetectMarker(rgb, show)
+        cTm = self.DetectMarker(rgb, show, noise=True, sigma=sigma)
         if cTm is None:
             return None, None #return realy if marker is not detected
         
@@ -325,7 +333,7 @@ class IP:
         
         return qdot, err
 
-    def RunPick(self, T=10.0):
+    def RunPick(self, T=10.0, Lambda=0.1, noise=5.0):
         model = self.model
         data = self.data
         arm = 6
@@ -343,6 +351,7 @@ class IP:
         q_ref = self.q0.copy()
         q_seen = self.q0.copy()
         visual_err = np.zeros(6)
+        idx_done = False
         log = {"t": [], "x_true": [], 'x_hat': [], "u": [], "sigma": [], "P": [], "nis": [], "PBVS visual error": [], "q_meas": []}
 
         with mujoco.viewer.launch_passive(model, data) as viewer:
@@ -355,7 +364,7 @@ class IP:
                     
                     if k % cam_every == 0:
                         rgb, full_view = self.TakePhoto()
-                        qd_ref, visual_err = self.PBVS(rgb, q_hat, Lambda=Lambda)
+                        qd_ref, visual_err = self.PBVS(rgb, q_hat, Lambda=Lambda, sigma=noise)
                         
                         if qd_ref is None:
                             visual_err = np.full(6, np.nan)
@@ -364,7 +373,9 @@ class IP:
                             lost = False
                             q_seen = q_hat.copy()
                         
-                        
+                        if np.linalg.norm(visual_err) < 0.01 and idx_done == False:
+                            print("Done on step", k)
+                            idx_done = True
                         print("meters", np.linalg.norm(visual_err[:3]))
                         print("rads", np.linalg.norm(visual_err[3:]))
                     if lost:
