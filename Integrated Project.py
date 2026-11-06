@@ -204,7 +204,7 @@ class IP:
         d.qpos[:6] = self.xh[:6]
         d.qvel[:6] = self.xh[6:]
         d.ctrl[:6] = u_prev
- 
+        
         if relin:                                      # refresh F at the current estimate
             nx = 2 * self.nv + self.model.na
             A = np.zeros((nx, nx))
@@ -529,7 +529,7 @@ class IP:
         U = np.array(log["u"]); Xt = np.array(log["x_true"])
         Xd = Xt.copy(); Xd[:, :6] -= self.q0                 # deviation from keyframe
         W = np.array([Xd[k + 1] - (A @ Xd[k] + B @ (U[k] - self.u0))
-                      for k in range(s, len(Xd) - 1)])
+                    for k in range(s, len(Xd) - 1)])
         rms = np.sqrt((W ** 2).mean(0))
         print("model error per step (RMS)  pos:", rms[:6], "\n vel:", rms[6:])
         print("current Qd (sqrt of diag)   pos:", np.sqrt(np.diag(self.Qd)[:6]), "\n vel:", np.sqrt(np.diag(self.Qd)[6:]))
