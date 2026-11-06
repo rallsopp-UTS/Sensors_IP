@@ -141,8 +141,8 @@ class IP:
         arm = 6                                                                                         # number of joint arms
         mujoco.mj_resetDataKeyframe(model, data, 0)                                                     # Puts the scratch data at keyframe 0
         mujoco.mj_forward(model, data)                                                                  # compute gravity and the other derived quantities for that pose
-        Kp = np.diag(model.actuator_gainprm[:, 0])                                                      # Servo stiffness per joint
-        Kv = np.diag(-model.actuator_biasprm[:, 2])                                                     # Servo damping per joint
+        Kp = np.diag(model.actuator_gainprm[:arm, 0])                                                      # Servo stiffness per joint
+        Kv = np.diag(-model.actuator_biasprm[:arm, 2])                                                     # Servo damping per joint
 
         # Find the command that holds the arm still
         data.ctrl[:arm] = data.qpos[:arm] + data.qfrc_bias[:arm] / np.diag(Kp)                             # command = current angle + (gravity torque / servo stiffness)
