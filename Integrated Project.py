@@ -35,7 +35,7 @@ class IP:
         print("Grip Id:", self.grip_id)
 
         #Calibration of Camera
-        self.K, self.dist = self.CalibrateCamera(dir="calib_2")
+        self.K_cam, self.dist_cam = self.CalibrateCamera(dir="calib_2")
         self.cam_id = self.model.camera("RGB-D").id
         self.fixed_cam_id = self.model.camera("fixed_cam").id
 
