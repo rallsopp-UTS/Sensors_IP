@@ -385,16 +385,12 @@ Own project.  Must include, at minimum, a state-space model with controllability
     <!--/ Abstract. -->
 
 <!-- PART C INFO -->
-<<!-- PART C INFO -->
-<!-- PART C INFO -->
 <section class="section">
   <div class="container is-max-desktop">
     <div class="columns is-centered">
       <div class="column is-four-fifths">
         <h2 class="title is-3 has-text-centered">Part C: Estimation</h2>
         <div class="content">
-
-          <p>A Kalman filter for the UR3 joint state. Anything highlighted <mark>like this</mark> still needs filling in before you submit.</p>
 
           <h3 class="title is-4">1. What the filter does</h3>
           <p>The arm only has encoders, and they measure joint <strong>angles</strong> with some noise. The controller also needs joint <strong>speeds</strong>, which nothing measures. The Kalman filter takes the noisy angles and gives a cleaner estimate of both the angles and the speeds.</p>
@@ -452,9 +448,32 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
           </div>
           <p>The re-measured values are about the same size, so the pattern holds on the final run.</p>
 
-          <p><strong>Step 2: scale it up.</strong> The raw errors alone made the filter far too confident (NEES about 1780, where 12 is ideal). Multiplying all the variances by <strong>220</strong> brought NEES to about 12. A likely reason is that the model error builds up over many steps, not just one. This is a guess and was not tested. <mark>Add how 220 was found.</mark></p>
-          <p>An earlier hand-picked Q gave similar accuracy (NEES 11.9), but its scale factors had no stated source, so it was replaced.</p>
+          <p><strong>Step 2: scale it up.</strong> The raw errors alone made the filter far too confident (NEES about 1780, where 12 is ideal). Multiplying all the variances by <strong>220</strong> brought NEES to about 12. The factor of 220 was a sweep performed several times to locate the correct factor. The images below show some of the sweeps completed. The raw one-step error underestimates what the filter needs, so a scale is applied and checked with NEES.</p>
 
+          <div class="columns is-centered">
+          
+            <div class="column">
+              <figure class="image">
+                <img src="./static/images/results/sweep_1.png"
+                     alt="Screenshot of an early sweep of the Q scale factor with NEES for each value">
+                <figcaption class="is-size-7 mt-2">
+                  <mark>Wide sweep: say the range of scales tried and what NEES did.</mark>
+                </figcaption>
+              </figure>
+            </div>
+          
+            <div class="column">
+              <figure class="image">
+                <img src="./static/images/results/sweep_2.png"
+                     alt="Screenshot of a narrower sweep of the Q scale factor around the chosen value">
+                <figcaption class="is-size-7 mt-2">
+                  <mark>Narrow sweep: say the range of scales tried and which one gave NEES closest to 12.</mark>
+                </figcaption>
+              </figure>
+            </div>
+          
+          </div>
+                  
           <h3 class="title is-4">5. Results</h3>
           <p>One 20 s closed-loop run, with PBVS and LQR driving the arm from the estimate. The first 500 samples were skipped as start-up. Truth was used only for scoring.</p>
 
@@ -475,11 +494,31 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
           <p>The angle estimate is about 8 times more accurate than a raw encoder reading. The speed estimate is accurate to about 4 mrad/s even though no sensor measures it. NEES and NIS are both at their expected values, so the filter’s stated uncertainty matches its real error. Coverage is slightly below 0.997, so the filter is a little overconfident on some state.</p>
           <p><strong>What NEES and NIS mean.</strong> NEES checks the filter’s uncertainty against its real error over all 12 states (it needs truth). NIS checks the filter’s prediction of each encoder reading against what the encoder really said (it does not need truth).</p>
 
-          <figure class="image">
-            <img src="./static/images/results/joint1_speed_estimate.png"
-                 alt="Joint 1 speed over the run: true value, estimate and plus or minus three sigma band">
-            <figcaption class="is-size-7 mt-2">Joint 1 speed, which the encoders never measure. The estimate follows the truth and the ±3σ band contains it. <mark>Move joint1_speed_estimate.png into static/images/results/</mark></figcaption>
-          </figure>
+          <div class="columns is-centered">
+          
+            <!-- Left: full run -->
+            <div class="column">
+              <figure class="image">
+                <img src="./static/images/results/joint1_speed_estimate.png"
+                     alt="Joint 1 speed over the full run: true value, estimate and plus or minus three sigma band">
+                <figcaption class="is-size-7 mt-2">
+                  Full run. Joint 1 speed, which the encoders never measure. The estimate follows the truth and the ±3σ band contains it.
+                </figcaption>
+              </figure>
+            </div>
+          
+            <!-- Right: zoomed in -->
+            <div class="column">
+              <figure class="image">
+                <img src="./static/images/results/ZOOMEDIN.GRAPH.png"
+                     alt="Zoomed view of joint 1 speed during the first seconds of motion">
+                <figcaption class="is-size-7 mt-2">
+                  Zoom on the graph
+                </figcaption>
+              </figure>
+            </div>
+          
+          </div>
 
           <h3 class="title is-4">6. What happens when Q or R change</h3>
           <p>We replayed the same logged run through the filter with Q or R scaled up and down. A scale of 1 is the final setting.</p>
@@ -541,7 +580,7 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
           <h3 class="title is-4">8. Limitations</h3>
           <ul>
             <li><strong>One pose.</strong> The model is only accurate near the starting pose. A pick that moves the arm much further would make the estimates worse, and would need a model that is updated along the path, or an EKF.</li>
-            <li><strong>One run.</strong> Q was measured, tuned and scored on the same run, and the sweeps replay that run. This shows the filter is consistent here, but not yet that it holds for other noise or object positions. <mark>Replace with repeated-trial results if you do them.</mark></li>
+            <li><strong>One run.</strong> Q was measured, tuned and scored on the same run, and the sweeps replay that run. This shows the filter is consistent here, but not yet that it holds for other noise or object positions.</li>
             <li><strong>Truth used for tuning.</strong> Q was measured offline using simulator truth. The running filter never sees truth.</li>
             <li><strong>Simulated noise.</strong> The encoder noise is the simulator’s own, so NIS checks the filter against a known noise level, not a real sensor.</li>
             <li><strong>Speed accuracy.</strong> It is limited by the model error, not the sensor noise. Raising R improves speed but makes the angle worse.</li>
