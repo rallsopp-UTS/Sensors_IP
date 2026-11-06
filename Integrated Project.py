@@ -182,7 +182,7 @@ class IP:
         sysd = ct.c2d(sysc=sysc, Ts=Ts, method="zoh")
         return sysd.A, sysd.B, sysd.C
 
-    def ReadEncoders(self):
+    def ReadEncoders(self, counter):
         values = self.data.qpos[:6] + self.rng.normal(0, self.sig_q, 6)
         if counter % 200 == 0:
             print("Joint states", self.data.qpos[:6])
@@ -263,7 +263,7 @@ class IP:
                 mujoco.mj_step(model, data)
                 viewer.sync()
 
-    def DetectMarker(self, rgb, show=False):
+    def DetectMarker(self, rgb, show=False, noise=True):
         """
         Detects an ArUco marker in an RGB img and provides the Pose from camera to marker cTm. show=True to display the image/s
         """
@@ -358,7 +358,7 @@ class IP:
             while viewer.is_running():
                 for k in range(n_steps):
                     #1. SENSING (Part B)
-                    q_meas = self.ReadEncoders() #simulated encoder, the only place plant state is read for the loop.
+                    q_meas = self.ReadEncoders(k) #simulated encoder, the only place plant state is read for the loop.
                     q_hat, qd_hat = self.KFStep(u_prev, q_meas)
                     x_hat = np.hstack([q_hat, qd_hat]) 
                     
