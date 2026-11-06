@@ -581,6 +581,8 @@ Update:   S = H P⁻ Hᵀ + R             K = P⁻ Hᵀ S⁻¹
                 <tr class="is-selected"><td>Arm with gripper</td><td>EKF (MuJoCo predict), ×0.35</td><td>11.9</td><td>1.000</td></tr>
               </tbody>
             </table>
+            <p>The new model allows the mug to be moved to any position that is in the camera's view. It predicts with the simulator’s own physics, and it refreshes its model as the arm moves. So the model stays accurate wherever the arm goes, which is why a different mug position shouldn’t break it. </p>
+
           </div>
 
           <p>The gripper’s extra weight at the wrist changed which joints have the biggest model error. The biggest speed error moved from the elbow to the shoulder lift, and joint 5’s error grew about 5 times. The old Q no longer fitted. NEES caught the problem, and re-running <code>EstimateQ</code> on the new arm fixed it.</p>
@@ -662,29 +664,6 @@ q_ref k+1 = q_ref k + qd_ref * timestep</code></pre>
 <!--/ PART D INFO -->
     <!--/ Abstract. -->
 
-  <!-- PART E INFO -->
-<section class="section">
-  <div class="container is-max-desktop">
-    <!-- Abstract. -->
-    <div class="columns is-centered has-text-centered">
-      <div class="column is-four-fifths">
-        <h2 class="title is-3">Part E information</h2>
-        <div class="content has-text-justified">
-          <p>
-            Description of the project. This is a sample text to show how the abstract would look like in your own project. You can use this space to describe the main idea of your project, the methods used, and the results obtained.
-          </p>
-          <p>
-            Orem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-          </p>
-          <p>
-            The video below explain how to set up your portfolio.
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
-    <!--/ Abstract. -->
-
 <!-- Group Contributions -->
 <section class="section">
   <div class="container is-max-desktop">
@@ -704,7 +683,7 @@ q_ref k+1 = q_ref k + qd_ref * timestep</code></pre>
 
         <h3 class="title is-4">Austin</h3>
         <div class="content has-text-justified">
-          <p>Text goes here.</p>
+          <p>I contributed most to the code with the state space model and the structure for the main loop that completes the task. The other section I contributed to was the creation of the video. Overall, the group worked well together to finally complete the task. </p>
         </div>
 
       </div>
@@ -738,7 +717,7 @@ q_ref k+1 = q_ref k + qd_ref * timestep</code></pre>
         <h2 class="title is-3">AI Declaration</h2>
         <div class="content has-text-justified">
           <p>
-            AI was used to format the project page and we cannot code in html, some parts of the website were also structured with AI so we were able to find out what was necessary to include in each section. AI was used to take pictures of the checkerboard as that was difficult and time consuming to complete. It was also used to troubleshoot each section as we often came across errors we had not seen before and could not find and fix.
+            AI was used to format the project page as we cannot code in html, some parts of the website were also structured with AI so we were able to find out what was necessary to include in each section. AI was used to take pictures of the checkerboard as that was difficult and time consuming to complete. It was also used to troubleshoot each section as we often came across errors we had not seen before and could not find and fix.
           </p>
         </div>
       </div>
