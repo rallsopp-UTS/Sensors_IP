@@ -263,7 +263,7 @@ class IP:
                 mujoco.mj_step(model, data)
                 viewer.sync()
 
-    def DetectMarker(self, rgb, show=False, noise=True):
+    def DetectMarker(self, rgb, show=False, noise=True, sigma=5.0):
         """
         Detects an ArUco marker in an RGB img and provides the Pose from camera to marker cTm. show=True to display the image/s
         """
