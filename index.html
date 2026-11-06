@@ -393,7 +393,7 @@ Own project.  Must include, at minimum, a state-space model with controllability
         <div class="content">
 
           <h3 class="title is-4">1. What the filter does</h3>
-          <p>The arm only has encoders, and they measure joint <strong>angles</strong> with some noise. The controller also needs joint <strong>speeds</strong>, which nothing measures. The Kalman filter takes the noisy angles and gives a cleaner estimate of both the angles and the speeds.</p>
+          <p>The arm only has encoders, and they measure joint angles with some noise. The controller also needs joint speeds, which nothing measures. The Kalman filter takes the noisy angles and gives a cleaner estimate of both the angles and the speeds.</p>
 
           <div class="table-container">
             <table class="table is-fullwidth">
@@ -448,7 +448,7 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
           </div>
           <p>The re-measured values are about the same size, so the pattern holds on the final run.</p>
 
-          <p><strong>Step 2: scale it up.</strong> The raw errors alone made the filter far too confident (NEES about 1780, where 12 is ideal). Multiplying all the variances by <strong>220</strong> brought NEES to about 12. The factor of 220 was a sweep performed several times to locate the correct factor. The images below show some of the sweeps completed. The raw one-step error underestimates what the filter needs, so a scale is applied and checked with NEES.</p>
+          <p><strong>Step 2: scale it up.</strong> The raw errors alone made the filter far too confident (NEES about 1780, where 12 is ideal). Multiplying all the variances by 220 brought NEES to about 12. The factor of 220 was a sweep performed several times to locate the correct factor. The images below show some of the sweeps completed. The raw one-step error underestimates what the filter needs, so a scale is applied and checked with NEES.</p>
 
           <div class="columns is-centered">
           
@@ -457,7 +457,7 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
                 <img src="./static/images/results/sweep_1.png"
                      alt="Screenshot of an early sweep of the Q scale factor with NEES for each value">
                 <figcaption class="is-size-7 mt-2">
-                  <mark>Narrow Sweep</mark>
+                  Narrow Sweep
                 </figcaption>
               </figure>
             </div>
@@ -467,7 +467,7 @@ Update:   S = C P⁻ Cᵀ + R             K = P⁻ Cᵀ S⁻¹
                 <img src="./static/images/results/sweep_2.png"
                      alt="Screenshot of a narrower sweep of the Q scale factor around the chosen value">
                 <figcaption class="is-size-7 mt-2">
-                  <mark>Narrow Sweep</mark>
+                  Narrow Sweep
                 </figcaption>
               </figure>
             </div>
