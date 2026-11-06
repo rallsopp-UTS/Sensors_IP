@@ -120,7 +120,7 @@
                   <frame pos="0 0.09215 0" quat="-1 1 0 0">
                     <attach model="2f85" body="base_mount" prefix="gripper/"/>
                   </frame>
-                  <camera name="RGB-D" mode="fixed" pos="0 0.09215 0.05" xyaxes="1 0 0 0 0 1" fovy="60"/>
+                  <camera name="RGB-D" mode="fixed" pos="0 0.09215 0.075" xyaxes="1 0 0 0 0 1" fovy="60"/>
                 </body>
               </body>
             </body>
