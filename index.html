@@ -118,7 +118,6 @@
             alt="Teaser."/>
       <h2 class="subtitle has-text-centered">
         <span class="dnerf">Track Chosen: Track B</span> vision-guided pick.  UR3 in MuJoCo with a wrist-mounted RGB-D camera.  Detect a target object on a tabletop, plan an approach, and execute a pick using IBVS or PBVS. Required:  camera calibration; depth-based object localisation; state-space joint controller; observer for unmeasured states.  Constraint:  object position is randomised between trials and the system must demonstrate robustness.
-Own project.  Must include, at minimum, a state-space model with controllability and observability analysis, at least one calibrated exteroceptive sensor, a Kalman filter or observer, and a feedback controller running on estimated state.  
       </h2>
     </div>
   </div>
@@ -369,15 +368,36 @@ Own project.  Must include, at minimum, a state-space model with controllability
       <div class="column is-four-fifths">
         <h2 class="title is-3">Part B information</h2>
         <div class="content has-text-justified">
+          <h3 class="title is-4">1. Camera Type and Calibration</h3>
           <p>
-            Description of the project. This is a sample text to show how the abstract would look like in your own project. You can use this space to describe the main idea of your project, the methods used, and the results obtained.
+            The chosen camera is an RGB-D camera with a 60 degree vertical FOV. It is located 0.075m above the end effector of the ur3e. It takes photos of resolution of 640x480. 
+            
+            It has been calibrated using the MachineVisionToolbox's (MVT) <code>images2C</code> function, which requires images taken within swift to determine the cameras intrinsic matrix (<code>K</code>) and the distortion factors. It requires a checkerboard pattern to be placed on an object and photos be taken of that object rotated and translated.
           </p>
-          <p>
-            Orem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-          </p>
-          <p>
-            The video below explain how to set up your portfolio.
-          </p>
+          <p>Our RGB-D camera had these traits.</p>
+
+          <pre><code>K: [417.49969002   0.         319.49795557]
+ [  0.         417.45252535 241.69536625]
+ [  0.           0.           1.        ]
+          Distortion: [-7.49050036e-02  5.02144666e-01 -3.65691990e-04  8.48719842e-05
+ -1.04934017e+00]</code></pre>
+          <h3 class="title is-4">2. Object Detection</h3>
+          <p>To detect our object, an ArUco marker has been placed on the top face. The function <code>fiducial()</code> from the MVT toolbox allows the ArUco marker to be detected from the 4x4_50 dictionary, specifically marker 12. This function determines if the marker is within frame as well as the 3d pose of the Marker from the Camera frame.</p>
+
+          <h3 class="title is-4">3. Noise Integration</h3>
+          <p>Within the Mujoco sim, any image taken is "perfect", meaning all the RGB values aren't affected by any noise. In real life, every camera or sensor will suffer from noise which impacts the pixel values. This can be simulated by using NumPy to randomly generate normally distributed values around a set std deviation, with a larger std deviation impacting the image more. This allows some aspects of real life uncertainty to enter the system.</p>
+          <h3 class="title is-4">4. Frame diagram and Transform Chain</h3>
+          <p><code>eTw * cTe * mTc = mTw</code>
+
+          Uses kinematic chain and robot link lengths to determine end effector location and then transform to camera.
+          
+          Objects detected through the camera use the OpenCV frame whilst positions accessed through MjData are in the Mujoco frame, with the transformation between these a 180 degree rotation in the x-axis. Thus the camera pose is rotated to work with the OpenCV data.</p>
+          <h3 class="title is-4">Limitations and extensions</h3>
+          <p>This type of sensing, eye-in-hand, suffers when the object leaves the field of view. A pre-programmed sequence needs to be implemented to ensure the robot does not continue travelling and damage itself or others if this occurs. Also depending on the lighting and shadows, markers may not be sufficiently detected. 
+
+          An improvement to this design could be to utilise eye-to-hand sensing, where a camera, with a better view of the entire scene can provide the detections.</p>
+          <h3 class="title is-4">Acknowledgement</h3>
+          <p>The code for this section has be partially derived from the Week 3 code.</p>
         </div>
       </div>
     </div>
